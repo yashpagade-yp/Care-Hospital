@@ -23,6 +23,18 @@ class DayOfWeek(str, Enum):
     SUNDAY = "SUNDAY"
 
 
+class AvailabilityType(str, Enum):
+    """Defines the supported availability entry types.
+
+    The type distinguishes recurring weekly availability from date-specific
+    overrides that either add extra time or block time exceptionally.
+    """
+
+    RECURRING = "RECURRING"
+    EXCEPTION_AVAILABLE = "EXCEPTION_AVAILABLE"
+    EXCEPTION_BLOCKED = "EXCEPTION_BLOCKED"
+
+
 class DoctorAvailability(Model):
     """Represents a doctor availability slot stored in the database.
 
@@ -34,19 +46,19 @@ class DoctorAvailability(Model):
         ...,
         description="Identifier of the doctor user who owns this availability slot",
     )
-    day_of_week: DayOfWeek = Field(
-        ...,
-        description="Recurring working day for the availability slot",
+    availability_type: AvailabilityType = Field(
+        default=AvailabilityType.RECURRING,
+        description="Type of recurring slot or date-specific override being stored",
+    )
+    day_of_week: Optional[DayOfWeek] = Field(
+        default=None,
+        description="Recurring working day for weekly availability entries",
     )
     start_time: time = Field(..., description="Slot start time")
     end_time: time = Field(..., description="Slot end time")
-    is_exception: bool = Field(
-        default=False,
-        description="Indicates whether this entry is a date-specific exception",
-    )
     exception_date: Optional[date] = Field(
         default=None,
-        description="Specific date for exception-based availability entries",
+        description="Specific date used only for date-specific availability overrides",
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),

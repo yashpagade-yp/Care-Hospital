@@ -15,14 +15,14 @@ Patients today struggle to find the right doctor, check availability, and book a
 
 ## Objective
 To design and build a **production-level, three-role web platform** (Admin, Doctor, Patient) that:
-1. Allows patients to register, log in (including Google sign-in), browse doctors, and book appointments seamlessly.
+1. Allows patients to register, log in with email + password, browse doctors, and book appointments seamlessly.
 2. Allows admins to invite doctors securely via email invitation (link/token-based), manage doctor records, and oversee appointments at an operational level.
 3. Allows doctors to accept invitations via OTP-verified registration, manage their own availability, and access a dashboard showing their appointments and patient details.
-4. Enforces strict, role-based and relationship-based access control so that clinical data (prescriptions, medical records) is only accessible to the doctor-patient pair it belongs to, with a separate super-admin tier for any exceptional access — fully logged.
+4. Enforces strict, role-based and relationship-based access control so that clinical data (prescriptions, medical records) is only accessible to the doctor-patient pair it belongs to, while keeping admin access operational only and fully logged where needed.
 5. Provides a secure, scalable, and user-friendly experience across all three roles, suitable for real-world hospital/clinic use.
 
 ## Scope
-- Patient-facing landing page, authentication (signup/login/forgot password/Google), doctor discovery, and appointment booking flow.
+- Patient-facing landing page, authentication (signup/login/forgot password), doctor discovery, and appointment booking flow.
 - Admin dashboard for doctor invitation management, doctor directory, and operational oversight of appointments.
 - Doctor dashboard for availability management, appointment view, and patient interaction (prescriptions, notes).
 - Secure invitation system (token-based links with expiry, resend, and revoke capability).

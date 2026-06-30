@@ -26,11 +26,11 @@ class UserRole(str, Enum):
 class DoctorStatus(str, Enum):
     """Defines the onboarding and activation states for doctors.
 
-    This status is used only for doctor accounts and remains null for other
-    roles.
+    This status is stored only after a doctor user account exists and remains
+    null for non-doctor roles. Invitation lifecycle is tracked separately in
+    the DoctorInvitation model.
     """
 
-    INVITED = "INVITED"
     REGISTERED = "REGISTERED"
     ACTIVE = "ACTIVE"
     SUSPENDED = "SUSPENDED"
@@ -44,6 +44,7 @@ class OtpPurpose(str, Enum):
 
     DOCTOR_INVITE_VERIFY = "DOCTOR_INVITE_VERIFY"
     PATIENT_REGISTER_VERIFY = "PATIENT_REGISTER_VERIFY"
+    PASSWORD_RESET_VERIFY = "PASSWORD_RESET_VERIFY"
 
 
 class UserOtp(BaseModel):
@@ -84,7 +85,10 @@ class User(Model):
         unique=True,
         description="Globally unique email address used for login",
     )
-    phone: str = Field(..., description="Primary contact number of the user")
+    phone: Optional[str] = Field(
+        default=None,
+        description="Primary contact number of the user when collected for the role",
+    )
     dob: Optional[date] = Field(
         default=None,
         description="Date of birth captured for patient accounts",
@@ -121,7 +125,7 @@ class User(Model):
     )
     doctor_status: Optional[DoctorStatus] = Field(
         default=None,
-        description="Lifecycle status used only for doctor accounts",
+        description="Post-registration lifecycle status used only for doctor accounts",
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
