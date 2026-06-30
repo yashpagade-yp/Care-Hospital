@@ -14,7 +14,6 @@ from odmantic import Field, Model
 class AppointmentStatus(str, Enum):
     """Defines the supported appointment lifecycle states."""
 
-    PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
@@ -25,7 +24,6 @@ class AppointmentStatus(str, Enum):
 class PaymentStatus(str, Enum):
     """Defines the payment states stored on an appointment."""
 
-    PENDING = "PENDING"
     PAID = "PAID"
     REFUNDED = "REFUNDED"
 
@@ -40,8 +38,8 @@ class CancelledBy(str, Enum):
 class Appointment(Model):
     """Represents a booked appointment between a patient and a doctor.
 
-    The model is the core booking record and stores timing, status, payment,
-    and cancellation or reschedule references.
+    The model is created only after the temporary slot hold succeeds and mock
+    payment is completed, then stores the confirmed booking lifecycle.
     """
 
     patient_id: str = Field(..., description="Identifier of the patient user")
@@ -49,7 +47,7 @@ class Appointment(Model):
     date_time: datetime = Field(..., description="Scheduled date and time of the appointment")
     status: AppointmentStatus = Field(
         default=AppointmentStatus.CONFIRMED,
-        description="Current lifecycle state of the appointment",
+        description="Current lifecycle state of the confirmed appointment",
     )
     reason: Optional[str] = Field(
         default=None,
@@ -57,8 +55,8 @@ class Appointment(Model):
     )
     fee: float = Field(..., ge=0, description="Appointment consultation fee")
     payment_status: PaymentStatus = Field(
-        default=PaymentStatus.PENDING,
-        description="Mock payment state for the appointment",
+        default=PaymentStatus.PAID,
+        description="Mock payment state captured for the confirmed appointment",
     )
     cancelled_by: Optional[CancelledBy] = Field(
         default=None,
