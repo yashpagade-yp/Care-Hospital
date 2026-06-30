@@ -25,3 +25,14 @@ class PrescriptionResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
+
+class PrescriptionListResponse(BaseModel):
+    """Prescription list response payload."""
+
+    items: list[PrescriptionResponse] = Field(
+        default_factory=list,
+        description="Collection of prescription records",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+

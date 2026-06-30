@@ -60,3 +60,25 @@ class AdminProfileResponse(UserSummaryResponse):
 
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
+
+class DoctorListResponse(BaseModel):
+    """Doctor list response payload."""
+
+    items: list[DoctorProfileResponse] = Field(
+        default_factory=list,
+        description="Collection of doctor profile records",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PatientListResponse(BaseModel):
+    """Patient list response payload."""
+
+    items: list[PatientProfileResponse] = Field(
+        default_factory=list,
+        description="Collection of patient profile records",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+

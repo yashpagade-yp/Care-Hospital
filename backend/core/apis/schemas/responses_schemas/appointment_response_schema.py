@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.core.models.Appointment import AppointmentStatus, CancelledBy, PaymentStatus
+from backend.core.apis.schemas.responses_schemas.payment_response_schema import PaymentResponse
 
 
 class SlotHoldResponse(BaseModel):
@@ -93,6 +94,44 @@ class AppointmentDetailResponse(BaseModel):
     doctor_name: str | None = Field(
         default=None,
         description="Doctor display name for role-specific views",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AppointmentConfirmationResponse(BaseModel):
+    """Appointment confirmation response payload."""
+
+    appointment: AppointmentResponse = Field(
+        ...,
+        description="Confirmed appointment details",
+    )
+    payment: PaymentResponse = Field(
+        ...,
+        description="Mock payment recorded for the booking",
+    )
+    patient_name: str | None = Field(
+        default=None,
+        description="Patient display name confirmed during booking",
+    )
+    doctor_name: str | None = Field(
+        default=None,
+        description="Doctor display name linked to the booking",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AppointmentRescheduleResponse(BaseModel):
+    """Appointment reschedule response payload."""
+
+    previous_appointment: AppointmentResponse = Field(
+        ...,
+        description="Original appointment updated to the rescheduled state",
+    )
+    new_appointment: AppointmentResponse = Field(
+        ...,
+        description="New appointment created for the replacement slot",
     )
 
     model_config = ConfigDict(extra="forbid")

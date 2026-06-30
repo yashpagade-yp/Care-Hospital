@@ -9,6 +9,7 @@ from backend.core.controllers.base_controller import BaseController
 from backend.core.cruds.appointment_crud import CRUDAppointment
 from backend.core.cruds.prescription_crud import CRUDPrescription
 from backend.core.models.Appointment import AppointmentStatus
+from backend.core.models.user_model import UserRole
 
 logging = logger(__name__)
 
@@ -148,21 +149,61 @@ class PrescriptionController(BaseController):
                 detail="Internal Server Error",
             )
 
-    async def get_prescription_by_appointment(self, appointment_id: str) -> dict:
+    async def get_prescription_by_appointment(
+        self,
+        appointment_id: str,
+        actor_id: str,
+        actor_role: UserRole,
+    ) -> dict:
         """Fetch a prescription linked to a completed appointment.
 
         Args:
             appointment_id: Appointment identifier linked to the prescription.
+            actor_id: Authenticated user requesting the prescription.
+            actor_role: Role of the authenticated user.
 
         Returns:
             dict: Serialized prescription payload.
 
         Raises:
+            HTTPException 403: Authenticated user is not related to the appointment.
             HTTPException 404: Prescription record does not exist.
         """
 
         try:
             logging.info("Executing PrescriptionController.get_prescription_by_appointment")
+            appointment = await self.crud_appointment.get_by_id(id=appointment_id)
+            if appointment is None:
+                logging.warning(f"Prescription lookup blocked for missing appointment {appointment_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Appointment not found",
+                )
+            if actor_role == UserRole.PATIENT and appointment.patient_id != actor_id:
+                logging.warning(
+                    f"Patient {actor_id} cannot view prescription for appointment {appointment_id}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have access to this prescription",
+                )
+            if actor_role == UserRole.DOCTOR and appointment.doctor_id != actor_id:
+                logging.warning(
+                    f"Doctor {actor_id} cannot view prescription for appointment {appointment_id}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have access to this prescription",
+                )
+            if actor_role not in {UserRole.PATIENT, UserRole.DOCTOR}:
+                logging.warning(
+                    f"Unsupported role attempted prescription lookup: {actor_role}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This role cannot access prescriptions",
+                )
+
             prescription = await self.crud_prescription.get_by_appointment_id(
                 appointment_id=appointment_id
             )
