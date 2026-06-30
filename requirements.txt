@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+odmantic
+pymongo
+pydantic
+email-validator
+passlib[bcrypt]
+PyJWT
+python-dotenv
