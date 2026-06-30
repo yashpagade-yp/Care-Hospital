@@ -28,3 +28,7 @@ logs/
 
 .codex/
 .agents/
+venv/
+backend/venv/
+__pycache__/
+*.pyc
