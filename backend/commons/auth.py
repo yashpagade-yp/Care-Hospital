@@ -5,13 +5,11 @@ import os
 import secrets
 import time
 
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 from dotenv import load_dotenv
 
 load_dotenv()
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 JWT_SECRET = os.environ.get("secret") or "medi-hub-jwt-secret"
@@ -65,13 +63,31 @@ def decodeJWT(token: str) -> dict | None:
 
 
 def encrypt_password(password: str) -> str:
-    """Hash a plain-text password with bcrypt."""
-    return pwd_context.hash(password)
+    """Hash a plain-text password with bcrypt.
+
+    The application uses the native ``bcrypt`` library directly because the
+    currently installed ``passlib`` + ``bcrypt`` combination in this repo can
+    mis-handle valid short passwords during hashing and verification.
+    """
+
+    password_bytes = password.encode("utf-8")
+    return bcrypt.hashpw(password_bytes, bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain-text password against a bcrypt hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a plain-text password against a bcrypt hash.
+
+    Returns ``False`` for malformed stored hashes instead of raising a runtime
+    error during login.
+    """
+
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except ValueError:
+        return False
 
 
 def generate_otp(length: int = 6) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 from datetime import timedelta
 
@@ -13,6 +14,8 @@ from backend.core.cruds.invitation_crud import CRUDDoctorInvitation
 from backend.core.cruds.user_crud import CRUDUser
 from backend.core.models.Invitation import InvitationStatus
 from backend.core.models.user_model import UserRole
+from backend.core.utils.email.email_helper import send_email
+from backend.core.utils.email.email_template_generator import generate_email_template
 
 logging = logger(__name__)
 
@@ -62,13 +65,20 @@ class InvitationController(BaseController):
                     detail="A pending invitation already exists for this email",
                 )
 
+            token = self._generate_token()
+            expires_at = self._utc_now() + timedelta(hours=72)
+            await self._send_invitation_email(
+                doctor_email=email,
+                token=token,
+                expires_at=expires_at,
+            )
             invitation = await self.crud_invitation.create(
                 obj_in={
                     "doctor_email": email,
-                    "token": self._generate_token(),
+                    "token": token,
                     "status": InvitationStatus.PENDING,
                     "invited_by_admin_id": admin_user_id,
-                    "expires_at": self._utc_now() + timedelta(hours=72),
+                    "expires_at": expires_at,
                 }
             )
             return self._serialize_document(invitation)
@@ -125,12 +135,19 @@ class InvitationController(BaseController):
                     detail="Invitation not found",
                 )
 
+            token = self._generate_token()
+            expires_at = self._utc_now() + timedelta(hours=72)
+            await self._send_invitation_email(
+                doctor_email=invitation.doctor_email,
+                token=token,
+                expires_at=expires_at,
+            )
             updated_invitation = await self.crud_invitation.update(
                 id=invitation_id,
                 obj_in={
-                    "token": self._generate_token(),
+                    "token": token,
                     "status": InvitationStatus.PENDING,
-                    "expires_at": self._utc_now() + timedelta(hours=72),
+                    "expires_at": expires_at,
                 },
             )
             return self._serialize_document(updated_invitation)
@@ -249,3 +266,49 @@ class InvitationController(BaseController):
         """
 
         return secrets.token_urlsafe(32)
+
+    async def _send_invitation_email(
+        self,
+        *,
+        doctor_email: str,
+        token: str,
+        expires_at,
+    ) -> None:
+        """Send the doctor invitation email with a frontend onboarding link.
+
+        Args:
+            doctor_email: Invited doctor's email address.
+            token: Invitation token persisted in the database.
+            expires_at: UTC datetime when the invitation expires.
+
+        Raises:
+            HTTPException 500: Invitation email could not be delivered.
+        """
+
+        frontend_base_url = os.environ.get("frontend_base_url", "http://localhost:5173").rstrip("/")
+        invitation_link = f"{frontend_base_url}/doctor/invite?token={token}"
+        formatted_expiry = self._normalize_datetime(expires_at).strftime("%d %b %Y %I:%M %p UTC")
+        template = generate_email_template(
+            name=doctor_email.split("@")[0],
+            subject="Your MedCare doctor invitation",
+            title="You have been invited to join MedCare",
+            description=(
+                "An administrator has invited you to start doctor onboarding in MedCare. "
+                f"Use the secure link below to validate your invitation. This link expires on {formatted_expiry}."
+            ),
+            cta_text="Start doctor onboarding",
+            cta_link=invitation_link,
+        )
+        try:
+            await send_email(
+                subject=template["subject"],
+                to_email=doctor_email,
+                text=template["text"],
+                html=template["html"],
+            )
+        except Exception as error:
+            logging.error(f"Error in InvitationController._send_invitation_email: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send invitation email",
+            )

@@ -1,9 +1,11 @@
 """
-email_helper.py — Async email sending via Gmail SMTP.
+email_helper.py — Async-friendly email sending via Gmail SMTP.
 
-Why async SMTP?
-  FastAPI is async — using a blocking SMTP library would freeze the event loop
-  during email sending. aiosmtplib solves this by using asyncio-native SMTP.
+Why use stdlib SMTP?
+  FastAPI is async, but this repo currently does not have ``aiosmtplib``
+  installed reliably. Wrapping ``smtplib`` inside ``asyncio.to_thread()``
+  keeps the route/controller flow async-friendly without adding another
+  runtime dependency.
 
 Configuration (add to .env):
     gmail_user=your_gmail@gmail.com
@@ -16,9 +18,9 @@ How to get a Gmail App Password:
     4. Paste that 16-char password as gmail_app_password
 """
 
+import asyncio
 import os
-
-import aiosmtplib
+import smtplib
 from dotenv import load_dotenv
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -66,14 +68,12 @@ async def send_email(subject: str, to_email: str, text: str, html: str) -> bool:
         message.attach(MIMEText(text, "plain"))
         message.attach(MIMEText(html, "html"))
 
-        # Send the email using Gmail's SMTP server with STARTTLS encryption.
-        await aiosmtplib.send(
-            message,
-            hostname="smtp.gmail.com",
-            port=587,
-            start_tls=True,
-            username=gmail_user,
-            password=gmail_app_password,
+        # Send the email in a worker thread so the async event loop is not blocked.
+        await asyncio.to_thread(
+            _send_via_gmail_smtp,
+            message=message,
+            gmail_user=gmail_user,
+            gmail_app_password=gmail_app_password,
         )
 
         logging.info(f"Email sent to {to_email} | subject: {subject}")
@@ -82,3 +82,18 @@ async def send_email(subject: str, to_email: str, text: str, html: str) -> bool:
     except Exception as error:
         logging.error(f"send_email failed for {to_email}: {error}")
         raise
+
+
+def _send_via_gmail_smtp(*, message: MIMEMultipart, gmail_user: str, gmail_app_password: str) -> None:
+    """Send an email through Gmail SMTP using the Python standard library.
+
+    Args:
+        message: Fully prepared MIME email message.
+        gmail_user: Gmail sender address.
+        gmail_app_password: Gmail app password used for SMTP authentication.
+    """
+
+    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
+        smtp.starttls()
+        smtp.login(gmail_user, gmail_app_password)
+        smtp.send_message(message)
