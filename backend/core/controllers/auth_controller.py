@@ -18,6 +18,8 @@ from backend.commons.logger import logger
 from backend.core.controllers.base_controller import BaseController
 from backend.core.cruds.user_crud import CRUDUser
 from backend.core.models.user_model import DoctorStatus, OtpPurpose, UserRole
+from backend.core.utils.email.email_helper import send_email
+from backend.core.utils.email.email_template_generator import generate_email_template
 
 logging = logger(__name__)
 
@@ -110,7 +112,13 @@ class AuthController(BaseController):
                 )
 
             self._assert_otp_purpose_matches_user(user_role=user.role, purpose=purpose)
-            otp_payload = self._build_otp_payload(purpose=purpose)
+            otp_payload, otp_code = self._issue_otp_payload(purpose=purpose)
+            await self._send_otp_email(
+                email=user.email,
+                recipient_name=user.name,
+                otp_code=otp_code,
+                purpose=purpose,
+            )
             await self.crud_user.update(
                 id=str(user.id),
                 obj_in={"otp": otp_payload},
@@ -143,9 +151,18 @@ class AuthController(BaseController):
             logging.info("Executing AuthController.forgot_password")
             user = await self.crud_user.get_by_email(email=email.lower())
             if user is not None:
+                otp_payload, otp_code = self._issue_otp_payload(
+                    purpose=OtpPurpose.PASSWORD_RESET_VERIFY
+                )
+                await self._send_otp_email(
+                    email=user.email,
+                    recipient_name=user.name,
+                    otp_code=otp_code,
+                    purpose=OtpPurpose.PASSWORD_RESET_VERIFY,
+                )
                 await self.crud_user.update(
                     id=str(user.id),
-                    obj_in={"otp": self._build_otp_payload(purpose=OtpPurpose.PASSWORD_RESET_VERIFY)},
+                    obj_in={"otp": otp_payload},
                 )
             else:
                 logging.warning(f"Forgot-password requested for non-existent email {email}")
@@ -240,25 +257,28 @@ class AuthController(BaseController):
                 detail="Internal Server Error",
             )
 
-    def _build_otp_payload(self, *, purpose: OtpPurpose) -> dict:
-        """Build a hashed OTP payload stored on the user record.
+    def _issue_otp_payload(self, *, purpose: OtpPurpose) -> tuple[dict, str]:
+        """Build a hashed OTP payload and return the plain OTP for email delivery.
 
         Args:
             purpose: OTP business purpose stored on the account.
 
         Returns:
-            dict: Embedded OTP state ready for persistence.
+            tuple[dict, str]: Persistable OTP payload and the plain OTP code.
         """
 
         otp_code = generate_otp()
         expires_at = self._utc_now() + timedelta(minutes=10)
-        return {
-            "otp_code": hash_otp(otp_code),
-            "purpose": purpose,
-            "expires_at": expires_at,
-            "verified_at": None,
-            "created_at": self._utc_now(),
-        }
+        return (
+            {
+                "otp_code": hash_otp(otp_code),
+                "purpose": purpose,
+                "expires_at": expires_at,
+                "verified_at": None,
+                "created_at": self._utc_now(),
+            },
+            otp_code,
+        )
 
     async def _get_user_by_email(self, *, email: str):
         """Read a user record by email.
@@ -339,4 +359,55 @@ class AuthController(BaseController):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OTP is invalid",
+            )
+
+    async def _send_otp_email(
+        self,
+        *,
+        email: str,
+        recipient_name: str,
+        otp_code: str,
+        purpose: OtpPurpose,
+    ) -> None:
+        """Send an OTP email for resend or password-reset workflows.
+
+        Args:
+            email: Recipient email address.
+            recipient_name: Display name used in the email body.
+            otp_code: Plain OTP to deliver by email.
+            purpose: Workflow that triggered the OTP.
+
+        Raises:
+            HTTPException 500: OTP email delivery failed.
+        """
+
+        if purpose == OtpPurpose.PASSWORD_RESET_VERIFY:
+            title = "Reset your MedCare password"
+            description = "Use this one-time password to reset your MedCare password. The code expires in 10 minutes."
+        elif purpose == OtpPurpose.DOCTOR_INVITE_VERIFY:
+            title = "Verify your MedCare doctor onboarding"
+            description = "Use this one-time password to continue your doctor onboarding flow. The code expires in 10 minutes."
+        else:
+            title = "Verify your MedCare account"
+            description = "Use this one-time password to verify your MedCare account. The code expires in 10 minutes."
+
+        template = generate_email_template(
+            name=recipient_name,
+            subject=title,
+            title=title,
+            description=description,
+            action_code=otp_code,
+        )
+        try:
+            await send_email(
+                subject=template["subject"],
+                to_email=email,
+                text=template["text"],
+                html=template["html"],
+            )
+        except Exception as error:
+            logging.error(f"Error in AuthController._send_otp_email: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send OTP email",
             )

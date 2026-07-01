@@ -20,6 +20,8 @@ from backend.core.cruds.user_crud import CRUDUser
 from backend.core.models.DoctorAvailability import AvailabilityType
 from backend.core.models.Invitation import InvitationStatus
 from backend.core.models.user_model import DoctorStatus, OtpPurpose, UserRole
+from backend.core.utils.email.email_helper import send_email
+from backend.core.utils.email.email_template_generator import generate_email_template
 
 logging = logger(__name__)
 
@@ -59,6 +61,15 @@ class UserController(BaseController):
                     detail="User with this email already exists",
                 )
 
+            otp_payload, plain_otp = self._issue_otp_payload(
+                purpose=OtpPurpose.PATIENT_REGISTER_VERIFY,
+            )
+            await self._send_otp_email(
+                email=email,
+                recipient_name=patient_data["name"],
+                otp_code=plain_otp,
+                purpose=OtpPurpose.PATIENT_REGISTER_VERIFY,
+            )
             user = await self.crud_user.create(
                 obj_in={
                     "name": patient_data["name"],
@@ -68,9 +79,7 @@ class UserController(BaseController):
                     "password_hash": encrypt_password(patient_data["password"]),
                     "role": UserRole.PATIENT,
                     "is_otp_verified": False,
-                    "otp": self._build_otp_payload(
-                        purpose=OtpPurpose.PATIENT_REGISTER_VERIFY,
-                    ),
+                    "otp": otp_payload,
                 }
             )
             response = self._serialize_document(user)
@@ -169,6 +178,15 @@ class UserController(BaseController):
                     detail="Doctor account already exists",
                 )
 
+            otp_payload, plain_otp = self._issue_otp_payload(
+                purpose=OtpPurpose.DOCTOR_INVITE_VERIFY,
+            )
+            await self._send_otp_email(
+                email=email,
+                recipient_name=email.split("@")[0],
+                otp_code=plain_otp,
+                purpose=OtpPurpose.DOCTOR_INVITE_VERIFY,
+            )
             user = await self.crud_user.create(
                 obj_in={
                     "name": email.split("@")[0],
@@ -177,9 +195,7 @@ class UserController(BaseController):
                     "role": UserRole.DOCTOR,
                     "is_otp_verified": False,
                     "doctor_status": DoctorStatus.REGISTERED,
-                    "otp": self._build_otp_payload(
-                        purpose=OtpPurpose.DOCTOR_INVITE_VERIFY,
-                    ),
+                    "otp": otp_payload,
                 }
             )
             await self.crud_invitation.update(
@@ -394,25 +410,28 @@ class UserController(BaseController):
                 detail="Internal Server Error",
             )
 
-    def _build_otp_payload(self, *, purpose: OtpPurpose) -> dict:
-        """Build a hashed OTP payload stored on the user record.
+    def _issue_otp_payload(self, *, purpose: OtpPurpose) -> tuple[dict, str]:
+        """Build a hashed OTP payload and return the plain OTP once for email use.
 
         Args:
             purpose: OTP business purpose stored on the account.
 
         Returns:
-            dict: Embedded OTP state ready for persistence.
+            tuple[dict, str]: Persistable OTP payload and the plain OTP code.
         """
 
         otp_code = generate_otp()
         expires_at = self._utc_now() + timedelta(minutes=10)
-        return {
-            "otp_code": hash_otp(otp_code),
-            "purpose": purpose,
-            "expires_at": expires_at,
-            "verified_at": None,
-            "created_at": self._utc_now(),
-        }
+        return (
+            {
+                "otp_code": hash_otp(otp_code),
+                "purpose": purpose,
+                "expires_at": expires_at,
+                "verified_at": None,
+                "created_at": self._utc_now(),
+            },
+            otp_code,
+        )
 
     async def _get_user_by_email_and_role(self, *, email: str, role: UserRole):
         """Read a user record by email and enforce the expected role.
@@ -519,4 +538,52 @@ class UserController(BaseController):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OTP is invalid",
+            )
+
+    async def _send_otp_email(
+        self,
+        *,
+        email: str,
+        recipient_name: str,
+        otp_code: str,
+        purpose: OtpPurpose,
+    ) -> None:
+        """Send an OTP email for patient registration or doctor onboarding.
+
+        Args:
+            email: Recipient email address.
+            recipient_name: Display name used in the email body.
+            otp_code: Plain OTP to deliver to the recipient.
+            purpose: Workflow that triggered the OTP email.
+
+        Raises:
+            HTTPException 500: OTP email delivery failed.
+        """
+
+        if purpose == OtpPurpose.PATIENT_REGISTER_VERIFY:
+            title = "Verify your MedCare patient account"
+            description = "Use this one-time password to complete your patient registration. The code expires in 10 minutes."
+        else:
+            title = "Verify your MedCare doctor onboarding"
+            description = "Use this one-time password to continue your doctor onboarding flow. The code expires in 10 minutes."
+
+        template = generate_email_template(
+            name=recipient_name,
+            subject=title,
+            title=title,
+            description=description,
+            action_code=otp_code,
+        )
+        try:
+            await send_email(
+                subject=template["subject"],
+                to_email=email,
+                text=template["text"],
+                html=template["html"],
+            )
+        except Exception as error:
+            logging.error(f"Error in UserController._send_otp_email: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send OTP email",
             )
