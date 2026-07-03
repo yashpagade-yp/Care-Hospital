@@ -1,7 +1,5 @@
 """Patient request schemas for the MedCare API layer."""
 
-from datetime import date
-
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -21,9 +19,8 @@ class PatientRegisterRequest(BaseModel):
         min_length=8,
         description="Plain-text password chosen by the patient",
     )
-    dob: date = Field(..., description="Date of birth of the patient")
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
 
 class PatientVerifyOtpRequest(BaseModel):

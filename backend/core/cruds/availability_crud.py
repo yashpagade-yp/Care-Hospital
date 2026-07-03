@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 
 from backend.commons.logger import logger
 from backend.core.cruds.base_crud import BaseCRUD
@@ -67,7 +66,7 @@ class CRUDDoctorAvailability(BaseCRUD[DoctorAvailability]):
         self,
         *,
         doctor_id: str,
-        exception_date: date,
+        exception_date: str,
     ) -> list[DoctorAvailability]:
         """Read date-specific availability overrides for a doctor.
 

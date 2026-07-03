@@ -1,10 +1,10 @@
 import { useMemo, useState, useTransition } from "react";
 
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { PATIENT_NAV } from "./PatientDashboardPage";
 import { FormField } from "@/components/ui/FormField";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
-import { patientWorkspaceLinks } from "@/features/shared/workspace-links";
 import { doctorCards, reviews as mockReviews } from "@/lib/mock/data";
 import { reviewApi } from "@/lib/api/endpoints";
 import { formatDateTime } from "@/lib/utils/format";
@@ -54,11 +54,7 @@ export function PatientReviewsPage() {
   }
 
   return (
-    <RoleWorkspace
-      heading="Patient reviews"
-      summary="Leave one review after a completed appointment and browse visible doctor feedback."
-      links={patientWorkspaceLinks}
-    >
+    <SidebarLayout sections={PATIENT_NAV}>
       <div className="content-grid">
         <section className="surface-card">
           <div className="surface-card__header">
@@ -123,6 +119,6 @@ export function PatientReviewsPage() {
           </div>
         </section>
       </div>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }

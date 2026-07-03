@@ -11,7 +11,6 @@ type RegisterForm = {
   phone: string;
   email: string;
   password: string;
-  dob: string;
 };
 
 export function PatientRegisterPage() {
@@ -22,7 +21,6 @@ export function PatientRegisterPage() {
     phone: "",
     email: "",
     password: "",
-    dob: "",
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -56,8 +54,8 @@ export function PatientRegisterPage() {
         <p className="eyebrow">Patient registration</p>
         <h1>Create a verified patient account.</h1>
         <p>
-          This registration flow follows your Phase 1 requirements: name, phone, email,
-          password, and date of birth before email OTP verification.
+          Enter your name, phone number, email and password. We'll verify your email with a
+          one-time code before activating your account.
         </p>
 
         <form className="form-grid" onSubmit={handleSubmit}>
@@ -89,13 +87,6 @@ export function PatientRegisterPage() {
             value={form.password}
             onChange={(event) => updateField("password", event.target.value)}
             placeholder="At least 8 characters"
-            required
-          />
-          <FormField
-            label="Date of birth"
-            type="date"
-            value={form.dob}
-            onChange={(event) => updateField("dob", event.target.value)}
             required
           />
           <div className="form-actions form-actions--full">

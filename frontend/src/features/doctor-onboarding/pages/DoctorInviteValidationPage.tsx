@@ -1,5 +1,5 @@
-import { useState, useTransition } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState, useTransition } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { FormField } from "@/components/ui/FormField";
 import { StatusBanner } from "@/components/ui/StatusBanner";
@@ -8,32 +8,49 @@ import { invitationApi } from "@/lib/api/endpoints";
 
 export function DoctorInviteValidationPage() {
   const navigate = useNavigate();
-  const [token, setToken] = useState("");
+  const [searchParams] = useSearchParams();
+
+  // Pre-fill the token from the ?token= query parameter in the email link
+  const tokenFromUrl = searchParams.get("token") ?? "";
+
+  const [token, setToken] = useState(tokenFromUrl);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // If a token arrived via URL, auto-validate it immediately
+  useEffect(() => {
+    if (tokenFromUrl) {
+      validateToken(tokenFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function validateToken(tokenValue: string) {
     setMessage("");
     setError("");
 
     startTransition(async () => {
       try {
-        const response = await invitationApi.validate({ token });
+        const response = await invitationApi.validate({ token: tokenValue });
         if (!response.valid || !response.doctor_email) {
-          setError("This invitation is not available. Please contact the admin.");
+          setError("This invitation is not valid or has expired. Please contact the admin.");
           return;
         }
-        setPendingDoctorFlow({ token, email: response.doctor_email });
-        setMessage("Invitation verified. Continue to credential setup.");
+        setPendingDoctorFlow({ token: tokenValue, email: response.doctor_email });
+        setMessage("Invitation verified! Redirecting to credential setup…");
         navigate("/doctor/set-credentials");
       } catch {
-        setPendingDoctorFlow({ token, email: "newdoctor@medcare.app" });
-        setMessage("Backend validation unavailable, so demo onboarding is continuing.");
+        // Demo / backend unreachable — continue onboarding anyway
+        setPendingDoctorFlow({ token: tokenValue, email: "newdoctor@medcare.app" });
         navigate("/doctor/set-credentials");
       }
     });
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    validateToken(token);
   }
 
   return (
@@ -46,6 +63,13 @@ export function DoctorInviteValidationPage() {
           OTP verification.
         </p>
 
+        {/* Green banner when token was detected from the email link */}
+        {tokenFromUrl && !error && (
+          <StatusBanner tone="success">
+            Token detected from your email link — validating automatically…
+          </StatusBanner>
+        )}
+
         <form onSubmit={handleSubmit}>
           <FormField
             label="Invitation token"
@@ -57,7 +81,7 @@ export function DoctorInviteValidationPage() {
           {message ? <StatusBanner tone="success">{message}</StatusBanner> : null}
           {error ? <StatusBanner tone="error">{error}</StatusBanner> : null}
           <button type="submit" className="button button--primary" disabled={isPending}>
-            {isPending ? "Checking..." : "Validate invite"}
+            {isPending ? "Checking…" : "Validate invite"}
           </button>
         </form>
         <div className="inline-links">

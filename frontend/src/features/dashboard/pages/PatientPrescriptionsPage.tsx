@@ -1,8 +1,8 @@
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { PATIENT_NAV } from "./PatientDashboardPage";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
-import { patientWorkspaceLinks } from "@/features/shared/workspace-links";
 import { loadPrescriptionsForPatient } from "@/features/shared/resource-loaders";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { formatDateTime } from "@/lib/utils/format";
@@ -15,11 +15,7 @@ export function PatientPrescriptionsPage() {
   );
 
   return (
-    <RoleWorkspace
-      heading="Patient prescriptions"
-      summary="Review medicines and post-consultation instructions tied to completed appointments."
-      links={patientWorkspaceLinks}
-    >
+    <SidebarLayout sections={PATIENT_NAV}>
       {error ? <StatusBanner tone="warning">{error}</StatusBanner> : null}
       <section className="surface-card">
         <div className="surface-card__header">
@@ -54,6 +50,6 @@ export function PatientPrescriptionsPage() {
           />
         )}
       </section>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }

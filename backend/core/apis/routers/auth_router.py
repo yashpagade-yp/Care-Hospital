@@ -11,6 +11,7 @@ from backend.core.apis.schemas.request_schemas.auth_request_schema import (
     LoginRequest,
     ResendOtpRequest,
     ResetPasswordRequest,
+    VerifyLoginOtpRequest,
     VerifyPasswordResetOtpRequest,
 )
 from backend.core.apis.schemas.responses_schemas.auth_response_schema import (
@@ -26,17 +27,17 @@ logging = logger(__name__)
 
 @auth_router.post(
     "/v1/auth/login",
-    response_model=LoginResponse,
+    response_model=OtpSentResponse,
     tags=["Auth"],
 )
 async def login(request: LoginRequest):
-    """Authenticate a user with the shared login flow.
+    """Phase 1 of the shared login flow — verify credentials and send OTP.
 
     Args:
         request: Shared login payload.
 
     Returns:
-        LoginResponse: Signed JWT token with basic user summary.
+        OtpSentResponse: OTP dispatch confirmation. No token at this stage.
     """
 
     try:
@@ -45,12 +46,45 @@ async def login(request: LoginRequest):
             email=request.email,
             password=request.password,
         )
-        return build_response(LoginResponse, response)
+        return build_response(OtpSentResponse, response)
     except HTTPException as http_error:
         logging.error(f"Error in POST /v1/auth/login endpoint: {http_error}")
         raise http_error
     except Exception as error:
         logging.error(f"Error in POST /v1/auth/login endpoint: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
+@auth_router.post(
+    "/v1/auth/verify-login-otp",
+    response_model=LoginResponse,
+    tags=["Auth"],
+)
+async def verify_login_otp(request: VerifyLoginOtpRequest):
+    """Phase 2 of the shared login flow — verify OTP and issue the access token.
+
+    Args:
+        request: Login OTP verification payload.
+
+    Returns:
+        LoginResponse: Signed JWT token with role and user summary.
+    """
+
+    try:
+        logging.info("Calling POST /v1/auth/verify-login-otp endpoint")
+        response = await AuthController().verify_login_otp(
+            email=request.email,
+            otp=request.otp,
+        )
+        return build_response(LoginResponse, response)
+    except HTTPException as http_error:
+        logging.error(f"Error in POST /v1/auth/verify-login-otp endpoint: {http_error}")
+        raise http_error
+    except Exception as error:
+        logging.error(f"Error in POST /v1/auth/verify-login-otp endpoint: {error}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",

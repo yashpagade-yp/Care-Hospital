@@ -75,7 +75,6 @@ class UserController(BaseController):
                     "name": patient_data["name"],
                     "phone": patient_data["phone"],
                     "email": email,
-                    "dob": patient_data["dob"],
                     "password_hash": encrypt_password(patient_data["password"]),
                     "role": UserRole.PATIENT,
                     "is_otp_verified": False,
@@ -326,8 +325,9 @@ class UserController(BaseController):
                         "doctor_id": str(updated_user.id),
                         "availability_type": AvailabilityType.RECURRING,
                         "day_of_week": slot["day_of_week"],
-                        "start_time": slot["start_time"],
-                        "end_time": slot["end_time"],
+                        # Convert time objects to HH:MM strings for MongoDB
+                        "start_time": slot["start_time"].strftime("%H:%M") if hasattr(slot["start_time"], "strftime") else str(slot["start_time"])[:5],
+                        "end_time": slot["end_time"].strftime("%H:%M") if hasattr(slot["end_time"], "strftime") else str(slot["end_time"])[:5],
                     }
                 )
 
@@ -586,4 +586,92 @@ class UserController(BaseController):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to send OTP email",
+            )
+
+    async def delete_doctor(self, doctor_id: str, admin_user_id: str) -> dict:
+        """Permanently delete a doctor account from the platform.
+
+        Admin-only action. Verifies the requesting user is an admin and the
+        target user is a doctor before removing the record from the database.
+
+        Args:
+            doctor_id: The doctor user identifier to delete.
+            admin_user_id: The admin user performing the deletion.
+
+        Returns:
+            dict: Confirmation message payload.
+
+        Raises:
+            HTTPException 403: Acting user is not an admin.
+            HTTPException 404: Doctor not found or target is not a doctor.
+        """
+
+        try:
+            logging.info("Executing UserController.delete_doctor")
+            admin = await self.crud_user.get_by_id(id=admin_user_id)
+            if admin is None or admin.role != UserRole.ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only admins can remove doctor accounts",
+                )
+            doctor = await self.crud_user.get_by_id(id=doctor_id)
+            if doctor is None or doctor.role != UserRole.DOCTOR:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Doctor not found",
+                )
+            await self.crud_user.delete(id=doctor_id)
+            return {"message": "Doctor account removed successfully"}
+        except HTTPException:
+            raise
+        except Exception as error:
+            logging.error(f"Error in UserController.delete_doctor: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
+            )
+
+    async def suspend_doctor(self, doctor_id: str, admin_user_id: str) -> dict:
+        """Suspend a doctor account so they cannot receive new bookings.
+
+        Admin-only action. Sets doctor_status to SUSPENDED on the target doctor.
+
+        Args:
+            doctor_id: The doctor user identifier to suspend.
+            admin_user_id: The admin user performing the suspension.
+
+        Returns:
+            dict: Updated doctor profile payload.
+
+        Raises:
+            HTTPException 403: Acting user is not an admin.
+            HTTPException 404: Doctor not found or target is not a doctor.
+        """
+
+        try:
+            logging.info("Executing UserController.suspend_doctor")
+            admin = await self.crud_user.get_by_id(id=admin_user_id)
+            if admin is None or admin.role != UserRole.ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only admins can suspend doctor accounts",
+                )
+            doctor = await self.crud_user.get_by_id(id=doctor_id)
+            if doctor is None or doctor.role != UserRole.DOCTOR:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Doctor not found",
+                )
+            updated_doctor = await self.crud_user.update(
+                id=doctor_id,
+                obj_in={"doctor_status": DoctorStatus.SUSPENDED},
+            )
+            return self._serialize_document(updated_doctor)
+        except HTTPException:
+            raise
+        except Exception as error:
+            logging.error(f"Error in UserController.suspend_doctor: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
             )

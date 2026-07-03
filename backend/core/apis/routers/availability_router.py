@@ -72,6 +72,44 @@ async def create_doctor_availability(
         )
 
 
+@availability_router.delete(
+    "/v1/doctors/availability/{availability_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Availability"],
+)
+async def delete_doctor_availability(
+    availability_id: str,
+    authenticated_user_details: dict = Depends(get_authenticated_user),
+):
+    """Delete an availability entry owned by the authenticated doctor."""
+
+    try:
+        logging.info(f"Calling DELETE /v1/doctors/availability/{availability_id} endpoint")
+        require_roles(authenticated_user_details, allowed_roles={UserRole.DOCTOR})
+        deleted = await AvailabilityController().delete_doctor_availability(
+            availability_id=availability_id,
+            doctor_id=authenticated_user_details["id"],
+        )
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Availability entry not found",
+            )
+    except HTTPException as http_error:
+        logging.error(
+            f"Error in DELETE /v1/doctors/availability/{availability_id} endpoint: {http_error}"
+        )
+        raise http_error
+    except Exception as error:
+        logging.error(
+            f"Error in DELETE /v1/doctors/availability/{availability_id} endpoint: {error}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
 @availability_router.patch(
     "/v1/doctors/availability/{availability_id}",
     response_model=DoctorAvailabilityResponse,

@@ -1,9 +1,9 @@
 import { useState, useTransition } from "react";
 
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { ADMIN_NAV } from "./AdminDashboardPage";
 import { FormField } from "@/components/ui/FormField";
 import { StatusBanner } from "@/components/ui/StatusBanner";
-import { adminWorkspaceLinks } from "@/features/shared/workspace-links";
 import { availabilityApi } from "@/lib/api/endpoints";
 import { doctorDirectory } from "@/lib/mock/data";
 
@@ -33,11 +33,7 @@ export function AdminOverridesPage() {
   }
 
   return (
-    <RoleWorkspace
-      heading="Availability overrides"
-      summary="Apply emergency availability exceptions for operational needs such as leave, incidents, or blocked schedules."
-      links={adminWorkspaceLinks}
-    >
+    <SidebarLayout sections={ADMIN_NAV}>
       <section className="surface-card">
         <form className="form-grid" onSubmit={handleSubmit}>
           <div className="surface-card__header">
@@ -91,6 +87,6 @@ export function AdminOverridesPage() {
           </div>
         </form>
       </section>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }

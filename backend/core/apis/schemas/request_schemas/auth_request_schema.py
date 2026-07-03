@@ -67,3 +67,16 @@ class ResetPasswordRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+
+class VerifyLoginOtpRequest(BaseModel):
+    """Login OTP verification payload for phase 2 of the shared login flow."""
+
+    email: EmailStr = Field(..., description="Email address verifying the login OTP")
+    otp: str = Field(
+        ...,
+        min_length=4,
+        max_length=8,
+        description="6-digit code sent to the user's email during login phase 1",
+    )
+
+    model_config = ConfigDict(extra="forbid")

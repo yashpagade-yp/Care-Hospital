@@ -1,10 +1,10 @@
 import { useEffect, useState, useTransition } from "react";
 
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { PATIENT_NAV } from "./PatientDashboardPage";
 import { FormField } from "@/components/ui/FormField";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
-import { patientWorkspaceLinks } from "@/features/shared/workspace-links";
 import { loadPatientAppointments } from "@/features/shared/resource-loaders";
 import { appointmentApi } from "@/lib/api/endpoints";
 import { formatDateTime } from "@/lib/utils/format";
@@ -55,11 +55,7 @@ export function PatientAppointmentsPage() {
   }
 
   return (
-    <RoleWorkspace
-      heading="Patient appointments"
-      summary="Review upcoming and historical visits, then cancel or reschedule within the allowed policy window."
-      links={patientWorkspaceLinks}
-    >
+    <SidebarLayout sections={PATIENT_NAV}>
       {message ? <StatusBanner tone="success">{message}</StatusBanner> : null}
       <div className="surface-card">
         <div className="surface-card__header">
@@ -106,6 +102,6 @@ export function PatientAppointmentsPage() {
           </table>
         </div>
       </div>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }
