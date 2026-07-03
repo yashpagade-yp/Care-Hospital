@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 
 from fastapi import HTTPException, status
 
@@ -53,9 +53,14 @@ class AvailabilityController(BaseController):
                 doctor_id=doctor_id,
                 availability_data=availability_data,
             )
-
+            # Convert time/date objects to strings for MongoDB storage
+            sanitized = dict(availability_data)
+            sanitized["start_time"] = self._time_to_str(sanitized["start_time"])
+            sanitized["end_time"] = self._time_to_str(sanitized["end_time"])
+            if sanitized.get("exception_date") is not None:
+                sanitized["exception_date"] = self._date_to_str(sanitized["exception_date"])
             availability = await self.crud_availability.create(
-                obj_in={"doctor_id": doctor_id, **availability_data}
+                obj_in={"doctor_id": doctor_id, **sanitized}
             )
             return self._serialize_document(availability)
         except HTTPException:
@@ -112,22 +117,27 @@ class AvailabilityController(BaseController):
             merged_data = {
                 "availability_type": availability.availability_type,
                 "day_of_week": update_data.get("day_of_week", availability.day_of_week),
-                "start_time": start_time,
-                "end_time": end_time,
-                "exception_date": update_data.get(
-                    "exception_date",
-                    availability.exception_date,
-                ),
+                "start_time": self._time_to_str(start_time),
+                "end_time": self._time_to_str(end_time),
+                "exception_date": self._date_to_str(
+                    update_data.get("exception_date", availability.exception_date)
+                ) if update_data.get("exception_date", availability.exception_date) is not None else None,
             }
             await self._ensure_unique_slot(
                 doctor_id=doctor_id,
                 availability_data=merged_data,
                 exclude_id=availability_id,
             )
-
+            sanitized_update = dict(update_data)
+            if "start_time" in sanitized_update:
+                sanitized_update["start_time"] = self._time_to_str(sanitized_update["start_time"])
+            if "end_time" in sanitized_update:
+                sanitized_update["end_time"] = self._time_to_str(sanitized_update["end_time"])
+            if "exception_date" in sanitized_update and sanitized_update["exception_date"] is not None:
+                sanitized_update["exception_date"] = self._date_to_str(sanitized_update["exception_date"])
             updated_availability = await self.crud_availability.update(
                 id=availability_id,
-                obj_in=update_data,
+                obj_in=sanitized_update,
             )
             return self._serialize_document(updated_availability)
         except HTTPException:
@@ -140,14 +150,7 @@ class AvailabilityController(BaseController):
             )
 
     async def list_doctor_availability(self, doctor_id: str) -> dict:
-        """List availability entries belonging to a specific doctor.
-
-        Args:
-            doctor_id: Doctor whose availability is being viewed.
-
-        Returns:
-            dict: Serialized availability list payload.
-        """
+        """List availability entries belonging to a specific doctor."""
 
         try:
             logging.info("Executing AvailabilityController.list_doctor_availability")
@@ -158,6 +161,41 @@ class AvailabilityController(BaseController):
             raise
         except Exception as error:
             logging.error(f"Error in AvailabilityController.list_doctor_availability: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
+            )
+
+    async def delete_doctor_availability(self, availability_id: str, doctor_id: str) -> bool:
+        """Delete a doctor availability entry owned by the caller.
+
+        Args:
+            availability_id: Availability record identifier to delete.
+            doctor_id: Doctor attempting the deletion.
+
+        Returns:
+            bool: True if deleted, False if not found.
+
+        Raises:
+            HTTPException 403: Availability entry is not owned by the doctor.
+        """
+
+        try:
+            logging.info("Executing AvailabilityController.delete_doctor_availability")
+            availability = await self.crud_availability.get_by_id(id=availability_id)
+            if availability is None:
+                return False
+            if availability.doctor_id != doctor_id:
+                logging.warning(f"Doctor {doctor_id} cannot delete availability {availability_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have access to this availability entry",
+                )
+            return await self.crud_availability.delete(id=availability_id)
+        except HTTPException:
+            raise
+        except Exception as error:
+            logging.error(f"Error in AvailabilityController.delete_doctor_availability: {error}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
@@ -200,9 +238,9 @@ class AvailabilityController(BaseController):
                 obj_in={
                     "doctor_id": override_data["doctor_id"],
                     "availability_type": override_data["availability_type"],
-                    "start_time": override_data["start_time"],
-                    "end_time": override_data["end_time"],
-                    "exception_date": override_data["exception_date"],
+                    "start_time": self._time_to_str(override_data["start_time"]),
+                    "end_time": self._time_to_str(override_data["end_time"]),
+                    "exception_date": self._date_to_str(override_data["exception_date"]),
                     "day_of_week": None,
                 }
             )
@@ -218,21 +256,31 @@ class AvailabilityController(BaseController):
 
     @staticmethod
     def _validate_time_range(*, start_time, end_time) -> None:
-        """Validate that the provided availability window is non-empty.
-
-        Args:
-            start_time: Availability start time.
-            end_time: Availability end time.
-
-        Raises:
-            HTTPException 400: Start time is not before end time.
-        """
-
-        if start_time >= end_time:
+        """Validate that the provided availability window is non-empty."""
+        # Accept both time objects and HH:MM strings
+        st = start_time if isinstance(start_time, str) else start_time.isoformat()[:5]
+        et = end_time if isinstance(end_time, str) else end_time.isoformat()[:5]
+        if st >= et:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="start_time must be earlier than end_time",
             )
+
+    @staticmethod
+    def _time_to_str(t) -> str:
+        """Convert a datetime.time or HH:MM string to a HH:MM string."""
+        if isinstance(t, str):
+            return t[:5]  # already a string — just normalise to HH:MM
+        return t.strftime("%H:%M")
+
+    @staticmethod
+    def _date_to_str(d) -> str | None:
+        """Convert a datetime.date or ISO string to a YYYY-MM-DD string."""
+        if d is None:
+            return None
+        if isinstance(d, str):
+            return d[:10]
+        return d.isoformat()
 
     async def _ensure_unique_slot(
         self,
@@ -325,12 +373,17 @@ class AvailabilityController(BaseController):
             bool: True when the appointment depends on the availability slot.
         """
 
-        appointment_time = appointment_datetime.time()
-        time_matches = availability.start_time <= appointment_time < availability.end_time
+        appointment_time_str = appointment_datetime.strftime("%H:%M")
+        # start_time / end_time are stored as HH:MM strings
+        st = availability.start_time[:5] if isinstance(availability.start_time, str) else availability.start_time.strftime("%H:%M")
+        et = availability.end_time[:5] if isinstance(availability.end_time, str) else availability.end_time.strftime("%H:%M")
+        time_matches = st <= appointment_time_str < et
         if not time_matches:
             return False
         if availability.exception_date is not None:
-            return appointment_datetime.date() == availability.exception_date
+            # exception_date stored as YYYY-MM-DD string
+            ed = availability.exception_date[:10] if isinstance(availability.exception_date, str) else availability.exception_date.isoformat()
+            return appointment_datetime.date().isoformat() == ed
         if availability.day_of_week is not None:
             return appointment_datetime.strftime("%A").upper() == availability.day_of_week.value
         return False

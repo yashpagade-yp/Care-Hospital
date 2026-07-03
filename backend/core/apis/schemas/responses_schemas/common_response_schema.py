@@ -13,6 +13,10 @@ class MessageResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# Alias used by admin endpoints that return a plain confirmation message.
+CommonMessageResponse = MessageResponse
+
+
 class ErrorResponse(BaseModel):
     """Standard error payload returned by API endpoints."""
 

@@ -1,9 +1,9 @@
 import { useEffect, useState, useTransition } from "react";
 
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { DOCTOR_NAV } from "./DoctorDashboardPage";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
-import { doctorWorkspaceLinks } from "@/features/shared/workspace-links";
 import { loadDoctorAppointments } from "@/features/shared/resource-loaders";
 import { appointmentApi } from "@/lib/api/endpoints";
 import { formatDateTime } from "@/lib/utils/format";
@@ -40,11 +40,7 @@ export function DoctorAppointmentsPage() {
   }
 
   return (
-    <RoleWorkspace
-      heading="Doctor appointments"
-      summary="Manage confirmed visits, complete consultations, and track appointment outcomes."
-      links={doctorWorkspaceLinks}
-    >
+    <SidebarLayout sections={DOCTOR_NAV}>
       {message ? <StatusBanner tone="success">{message}</StatusBanner> : null}
       <section className="surface-card">
         <div className="table-wrap">
@@ -95,6 +91,6 @@ export function DoctorAppointmentsPage() {
           </table>
         </div>
       </section>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }

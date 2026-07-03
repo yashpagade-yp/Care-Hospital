@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { adminWorkspaceLinks } from "@/features/shared/workspace-links";
 import { loadAdminAppointments, loadPaymentByAppointment } from "@/features/shared/resource-loaders";
 import { formatDateTime } from "@/lib/utils/format";
 import type { Appointment, Payment } from "@/types/domain";
+import { ADMIN_NAV } from "./AdminDashboardPage";
 
 export function AdminAppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -21,18 +21,25 @@ export function AdminAppointmentsPage() {
   }
 
   return (
-    <RoleWorkspace
-      heading="Admin appointments"
-      summary="Track operational booking state, patient-doctor mapping, and payment references without exposing prescriptions."
-      links={adminWorkspaceLinks}
-    >
-      <div className="content-grid">
-        <section className="surface-card">
-          <div className="table-wrap">
-            <table className="data-table">
+    <SidebarLayout sections={ADMIN_NAV}>
+      <div className="ws-page-header">
+        <p className="ws-page-eyebrow">Admin Workspace</p>
+        <h1 className="ws-page-heading">All Appointments</h1>
+        <p className="ws-page-sub">
+          View and manage all patient-doctor appointments, payment statuses, and booking details.
+        </p>
+      </div>
+
+      <div className="ws-grid ws-grid--2">
+        <div className="ws-card" style={{ gridColumn: '1 / -1' }}>
+          <div className="ws-card__header">
+            <h2 className="ws-card__title">Appointment records</h2>
+          </div>
+          <div className="ws-table-wrap">
+            <table className="ws-table">
               <thead>
                 <tr>
-                  <th>Date and time</th>
+                  <th>Date &amp; Time</th>
                   <th>Patient</th>
                   <th>Doctor</th>
                   <th>Status</th>
@@ -42,14 +49,14 @@ export function AdminAppointmentsPage() {
               <tbody>
                 {appointments.map((appointment) => (
                   <tr key={appointment.id}>
-                    <td>{formatDateTime(appointment.date_time)}</td>
-                    <td>{appointment.patient_id}</td>
-                    <td>{appointment.doctor_id}</td>
-                    <td><span className={`pill pill--${appointment.status.toLowerCase()}`}>{appointment.status}</span></td>
+                    <td style={{ fontWeight: 600 }}>{formatDateTime(appointment.date_time)}</td>
+                    <td style={{ color: 'var(--text-soft)', fontSize: '0.85rem' }}>{appointment.patient_id}</td>
+                    <td style={{ color: 'var(--text-soft)', fontSize: '0.85rem' }}>{appointment.doctor_id}</td>
+                    <td><span className={`ws-badge ws-badge--${appointment.status.toLowerCase()}`}>{appointment.status}</span></td>
                     <td>
                       <button
                         type="button"
-                        className="button button--ghost button--compact"
+                        className="ws-btn ws-btn--ghost"
                         onClick={() => handleLoadPayment(appointment.id)}
                       >
                         View payment
@@ -60,38 +67,32 @@ export function AdminAppointmentsPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </div>
 
-        <section className="surface-card">
-          <div className="surface-card__header">
-            <div>
-              <p className="eyebrow">Payment detail</p>
-              <h2>Appointment-linked payment</h2>
+        {selectedPayment && (
+          <div className="ws-card">
+            <div className="ws-card__header">
+              <h2 className="ws-card__title">Payment detail</h2>
+            </div>
+            <div className="ws-card__body">
+              <dl className="detail-list">
+                <div>
+                  <dt>Transaction ref</dt>
+                  <dd>{selectedPayment.transaction_ref}</dd>
+                </div>
+                <div>
+                  <dt>Amount</dt>
+                  <dd>₹{selectedPayment.amount}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{selectedPayment.status}</dd>
+                </div>
+              </dl>
             </div>
           </div>
-          {selectedPayment ? (
-            <dl className="detail-list">
-              <div>
-                <dt>Transaction</dt>
-                <dd>{selectedPayment.transaction_ref}</dd>
-              </div>
-              <div>
-                <dt>Amount</dt>
-                <dd>Rs. {selectedPayment.amount}</dd>
-              </div>
-              <div>
-                <dt>Status</dt>
-                <dd>{selectedPayment.status}</dd>
-              </div>
-            </dl>
-          ) : (
-            <EmptyState
-              title="No payment selected"
-              description="Choose an appointment from the table to inspect payment details."
-            />
-          )}
-        </section>
+        )}
       </div>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }

@@ -4,7 +4,7 @@ This model stores recurring doctor schedule slots and optional exception-based
 availability entries used during appointment booking.
 """
 
-from datetime import date, datetime, time, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -54,11 +54,11 @@ class DoctorAvailability(Model):
         default=None,
         description="Recurring working day for weekly availability entries",
     )
-    start_time: time = Field(..., description="Slot start time")
-    end_time: time = Field(..., description="Slot end time")
-    exception_date: Optional[date] = Field(
+    start_time: str = Field(..., description="Slot start time as HH:MM string")
+    end_time: str = Field(..., description="Slot end time as HH:MM string")
+    exception_date: Optional[str] = Field(
         default=None,
-        description="Specific date used only for date-specific availability overrides",
+        description="Specific date (YYYY-MM-DD) used only for date-specific availability overrides",
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),

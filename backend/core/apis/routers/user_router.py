@@ -27,6 +27,9 @@ from backend.core.apis.schemas.responses_schemas.user_response_schema import (
     PatientListResponse,
     PatientProfileResponse,
 )
+from backend.core.apis.schemas.responses_schemas.common_response_schema import (
+    CommonMessageResponse,
+)
 from backend.core.controllers.user_controller import UserController
 from backend.core.models.user_model import UserRole
 
@@ -386,6 +389,90 @@ async def list_patients(
         raise http_error
     except Exception as error:
         logging.error(f"Error in GET /v1/patients endpoint: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
+@user_router.delete(
+    "/v1/admin/doctors/{doctor_id}",
+    response_model=CommonMessageResponse,
+    tags=["Admin"],
+)
+async def delete_doctor(
+    doctor_id: str,
+    authenticated_user_details=Depends(get_authenticated_user),
+):
+    """Permanently remove a doctor account from the platform.
+
+    Args:
+        doctor_id: The doctor user identifier to delete.
+        authenticated_user_details: Injected authenticated admin details.
+
+    Returns:
+        CommonMessageResponse: Deletion confirmation message.
+
+    Raises:
+        HTTPException 403: Authenticated user is not an admin.
+        HTTPException 404: Doctor not found.
+        HTTPException 500: Internal server error.
+    """
+
+    try:
+        logging.info(f"Calling DELETE /v1/admin/doctors/{doctor_id} endpoint")
+        response = await UserController().delete_doctor(
+            doctor_id=doctor_id,
+            admin_user_id=authenticated_user_details["id"],
+        )
+        return build_response(CommonMessageResponse, response)
+    except HTTPException as http_error:
+        logging.error(f"Error in DELETE /v1/admin/doctors endpoint: {http_error}")
+        raise http_error
+    except Exception as error:
+        logging.error(f"Error in DELETE /v1/admin/doctors endpoint: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
+@user_router.patch(
+    "/v1/admin/doctors/{doctor_id}/suspend",
+    response_model=DoctorProfileResponse,
+    tags=["Admin"],
+)
+async def suspend_doctor(
+    doctor_id: str,
+    authenticated_user_details=Depends(get_authenticated_user),
+):
+    """Suspend a doctor account so they can no longer receive new appointments.
+
+    Args:
+        doctor_id: The doctor user identifier to suspend.
+        authenticated_user_details: Injected authenticated admin details.
+
+    Returns:
+        DoctorProfileResponse: Updated doctor profile with suspended status.
+
+    Raises:
+        HTTPException 403: Authenticated user is not an admin.
+        HTTPException 404: Doctor not found.
+        HTTPException 500: Internal server error.
+    """
+
+    try:
+        logging.info(f"Calling PATCH /v1/admin/doctors/{doctor_id}/suspend endpoint")
+        response = await UserController().suspend_doctor(
+            doctor_id=doctor_id,
+            admin_user_id=authenticated_user_details["id"],
+        )
+        return build_response(DoctorProfileResponse, response)
+    except HTTPException as http_error:
+        logging.error(f"Error in PATCH /v1/admin/doctors/suspend endpoint: {http_error}")
+        raise http_error
+    except Exception as error:
+        logging.error(f"Error in PATCH /v1/admin/doctors/suspend endpoint: {error}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",

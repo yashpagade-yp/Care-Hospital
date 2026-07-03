@@ -1,10 +1,10 @@
 import { useEffect, useState, useTransition } from "react";
 
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { DOCTOR_NAV } from "./DoctorDashboardPage";
 import { FormField } from "@/components/ui/FormField";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
-import { doctorWorkspaceLinks } from "@/features/shared/workspace-links";
 import { loadPrescriptionsForDoctor } from "@/features/shared/resource-loaders";
 import { prescriptionApi } from "@/lib/api/endpoints";
 import type { Prescription } from "@/types/domain";
@@ -60,11 +60,7 @@ export function DoctorPrescriptionsPage() {
   }
 
   return (
-    <RoleWorkspace
-      heading="Doctor prescriptions"
-      summary="Create and review structured prescription entries tied to completed appointments."
-      links={doctorWorkspaceLinks}
-    >
+    <SidebarLayout sections={DOCTOR_NAV}>
       <div className="content-grid">
         <section className="surface-card">
           <div className="surface-card__header">
@@ -130,6 +126,6 @@ export function DoctorPrescriptionsPage() {
           </div>
         </section>
       </div>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }

@@ -1,6 +1,6 @@
 """Doctor availability response schemas for the MedCare API layer."""
 
-from datetime import date, datetime, time
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,11 +20,13 @@ class DoctorAvailabilityResponse(BaseModel):
         default=None,
         description="Recurring working day for weekly availability entries",
     )
-    start_time: time = Field(..., description="Start time of the availability window")
-    end_time: time = Field(..., description="End time of the availability window")
-    exception_date: date | None = Field(
+    # Stored as HH:MM strings in MongoDB (datetime.time is not encodable by ODMantic)
+    start_time: str = Field(..., description="Start time of the availability window (HH:MM)")
+    end_time: str = Field(..., description="End time of the availability window (HH:MM)")
+    # Stored as YYYY-MM-DD string (datetime.date is not encodable by ODMantic)
+    exception_date: str | None = Field(
         default=None,
-        description="Specific date for exception-based availability entries",
+        description="Specific date for exception-based availability entries (YYYY-MM-DD)",
     )
     created_at: datetime | None = Field(
         default=None,
@@ -35,7 +37,7 @@ class DoctorAvailabilityResponse(BaseModel):
         description="UTC timestamp when the availability record was last updated",
     )
 
-    model_config = ConfigDict(from_attributes=True, extra="forbid")
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class DoctorAvailabilityListResponse(BaseModel):
@@ -47,4 +49,3 @@ class DoctorAvailabilityListResponse(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
-

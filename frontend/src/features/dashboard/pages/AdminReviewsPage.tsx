@@ -1,9 +1,9 @@
 import { useEffect, useState, useTransition } from "react";
 
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { ADMIN_NAV } from "./AdminDashboardPage";
 import { FormField } from "@/components/ui/FormField";
 import { StatusBanner } from "@/components/ui/StatusBanner";
-import { adminWorkspaceLinks } from "@/features/shared/workspace-links";
 import { doctorDirectory } from "@/lib/mock/data";
 import { loadDoctorReviews } from "@/features/shared/resource-loaders";
 import { reviewApi } from "@/lib/api/endpoints";
@@ -36,11 +36,7 @@ export function AdminReviewsPage() {
   }
 
   return (
-    <RoleWorkspace
-      heading="Review moderation"
-      summary="Inspect doctor reviews, including hidden feedback, and control patient-facing visibility."
-      links={adminWorkspaceLinks}
-    >
+    <SidebarLayout sections={ADMIN_NAV}>
       <section className="surface-card">
         <div className="surface-card__header">
           <div>
@@ -74,6 +70,6 @@ export function AdminReviewsPage() {
           ))}
         </div>
       </section>
-    </RoleWorkspace>
+    </SidebarLayout>
   );
 }

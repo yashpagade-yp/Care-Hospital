@@ -1,13 +1,8 @@
 import { useEffect, useState, useTransition } from "react";
-
-import { RoleWorkspace } from "@/components/layout/RoleWorkspace";
-import { FormField } from "@/components/ui/FormField";
-import { StatusBanner } from "@/components/ui/StatusBanner";
-import { adminWorkspaceLinks } from "@/features/shared/workspace-links";
-import { loadInvitations } from "@/features/shared/resource-loaders";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { invitationApi } from "@/lib/api/endpoints";
-import { formatDateTime } from "@/lib/utils/format";
 import type { DoctorInvitation } from "@/types/domain";
+import { ADMIN_NAV } from "./AdminDashboardPage";
 
 export function AdminInvitationsPage() {
   const [email, setEmail] = useState("");
@@ -16,7 +11,7 @@ export function AdminInvitationsPage() {
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    loadInvitations().then(setItems);
+    invitationApi.list().then((res) => setItems(res.invitations)).catch(() => {});
   }, []);
 
   function handleCreate(event: React.FormEvent<HTMLFormElement>) {
@@ -27,89 +22,169 @@ export function AdminInvitationsPage() {
       try {
         const created = await invitationApi.create({ doctor_email: email });
         setItems((current) => [created, ...current]);
+        setMessage(`Invitation sent to ${email}.`);
       } catch {
-        setItems((current) => [
-          {
-            id: `invite-${current.length + 10}`,
-            doctor_email: email,
-            status: "PENDING",
-            expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-            created_at: new Date().toISOString(),
-          },
-          ...current,
-        ]);
+        setMessage("Could not send the invitation. Please try again.");
       }
-
       setEmail("");
-      setMessage("Invitation created successfully.");
     });
   }
 
-  function mutateInvitation(invitationId: string, status: DoctorInvitation["status"]) {
-    setItems((current) =>
-      current.map((item) => (item.id === invitationId ? { ...item, status } : item)),
-    );
+  async function handleResend(id: string) {
+    try {
+      await invitationApi.resend({ invitation_id: id });
+      setItems((current) =>
+        current.map((item) => (item.id === id ? { ...item, status: "PENDING" } : item)),
+      );
+    } catch {}
+  }
+
+  async function handleRevoke(id: string) {
+    try {
+      await invitationApi.revoke({ invitation_id: id });
+      setItems((current) =>
+        current.map((item) => (item.id === id ? { ...item, status: "REVOKED" } : item)),
+      );
+    } catch {}
   }
 
   return (
-    <RoleWorkspace
-      heading="Doctor invitations"
-      summary="Send invite-only onboarding links, then track accepted, pending, expired, and revoked states."
-      links={adminWorkspaceLinks}
-    >
-      <div className="content-grid">
-        <section className="surface-card">
-          <form onSubmit={handleCreate} className="form-grid">
-            <div className="surface-card__header">
-              <div>
-                <p className="eyebrow">Send invitation</p>
-                <h2>Invite a doctor by email</h2>
-              </div>
-            </div>
-            <FormField
-              label="Doctor email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-            <div className="form-actions form-actions--full">
-              {message ? <StatusBanner tone="success">{message}</StatusBanner> : null}
-              <button type="submit" className="button button--primary" disabled={isPending}>
-                {isPending ? "Sending..." : "Send invite"}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <section className="surface-card">
-          <div className="surface-card__header">
-            <div>
-              <p className="eyebrow">Invitation list</p>
-              <h2>Current invitation states</h2>
-            </div>
-          </div>
-          <div className="stack-list">
-            {items.map((item) => (
-              <article key={item.id} className="stack-list__item stack-list__item--block">
-                <div>
-                  <h3>{item.doctor_email}</h3>
-                  <p>Expires {formatDateTime(item.expires_at)}</p>
-                </div>
-                <div className="table-actions">
-                  <span className={`pill pill--${item.status.toLowerCase()}`}>{item.status}</span>
-                  <button type="button" className="button button--ghost button--compact" onClick={() => mutateInvitation(item.id, "PENDING")}>
-                    Resend
-                  </button>
-                  <button type="button" className="button button--ghost button--compact" onClick={() => mutateInvitation(item.id, "REVOKED")}>
-                    Revoke
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+    <SidebarLayout sections={ADMIN_NAV}>
+      <div className="ws-page-header">
+        <p className="ws-page-eyebrow">Admin Workspace</p>
+        <h1 className="ws-page-heading">Doctor Invitations</h1>
+        <p className="ws-page-sub">
+          Send invite-only onboarding links and track accepted, pending, expired, and revoked states.
+        </p>
       </div>
-    </RoleWorkspace>
+
+      <div className="ws-grid ws-grid--2">
+        {/* Invite form */}
+        <div className="ws-card">
+          <div className="ws-card__header">
+            <h2 className="ws-card__title">Send an invitation</h2>
+          </div>
+          <form className="ws-invite-form" onSubmit={handleCreate}>
+            <input
+              type="email"
+              placeholder="doctor@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              id="inv-email-input"
+            />
+            {message && (
+              <p style={{ fontSize: "0.85rem", color: "var(--green)", margin: 0 }}>{message}</p>
+            )}
+            <button
+              type="submit"
+              className="ws-btn ws-btn--primary ws-btn--full"
+              disabled={isPending}
+            >
+              {isPending ? "Sending…" : "Send invitation"}
+            </button>
+          </form>
+        </div>
+
+        {/* Invitation stats */}
+        <div className="ws-card">
+          <div className="ws-card__header">
+            <h2 className="ws-card__title">Summary</h2>
+          </div>
+          <div className="ws-glance-grid">
+            <div className="ws-glance-tile">
+              <span className="ws-glance-tile__label">Total sent</span>
+              <span className="ws-glance-tile__value">{items.length}</span>
+            </div>
+            <div className="ws-glance-tile">
+              <span className="ws-glance-tile__label">Pending</span>
+              <span className="ws-glance-tile__value">
+                {items.filter((i) => i.status === "PENDING").length}
+              </span>
+            </div>
+            <div className="ws-glance-tile">
+              <span className="ws-glance-tile__label">Accepted</span>
+              <span className="ws-glance-tile__value">
+                {items.filter((i) => i.status === "ACCEPTED").length}
+              </span>
+            </div>
+            <div className="ws-glance-tile">
+              <span className="ws-glance-tile__label">Expired / Revoked</span>
+              <span className="ws-glance-tile__value">
+                {items.filter((i) => i.status === "EXPIRED" || i.status === "REVOKED").length}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Invitation list */}
+      <div className="ws-card" style={{ marginTop: "1.25rem" }}>
+        <div className="ws-card__header">
+          <h2 className="ws-card__title">All invitations</h2>
+        </div>
+        {items.length === 0 ? (
+          <div className="ws-empty">
+            <div className="ws-empty__icon">📧</div>
+            <p className="ws-empty__title">No invitations yet</p>
+            <p className="ws-empty__sub">Send your first doctor invitation above.</p>
+          </div>
+        ) : (
+          <div className="ws-table-wrap">
+            <table className="ws-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Status</th>
+                  <th>Expires</th>
+                  <th>Sent on</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td style={{ fontWeight: 600 }}>{item.doctor_email}</td>
+                    <td>
+                      <span className={`ws-badge ws-badge--${item.status.toLowerCase()}`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td style={{ color: "var(--text-soft)", fontSize: "0.85rem" }}>
+                      {new Date(item.expires_at).toLocaleDateString()}
+                    </td>
+                    <td style={{ color: "var(--text-soft)", fontSize: "0.85rem" }}>
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </td>
+                    <td>
+                      <div className="ws-action-row">
+                        {item.status === "PENDING" && (
+                          <button
+                            type="button"
+                            className="ws-btn ws-btn--ghost"
+                            onClick={() => handleResend(item.id)}
+                          >
+                            Resend
+                          </button>
+                        )}
+                        {item.status !== "REVOKED" && item.status !== "ACCEPTED" && (
+                          <button
+                            type="button"
+                            className="ws-btn ws-btn--danger"
+                            onClick={() => handleRevoke(item.id)}
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </SidebarLayout>
   );
 }

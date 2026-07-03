@@ -1,7 +1,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -16,7 +15,10 @@ const SESSION_STORAGE_KEY = "medcare-session";
 type SessionContextValue = {
   session: Session | null;
   isAuthenticated: boolean;
-  login: (payload: { email: string; password: string }) => Promise<Session>;
+  /** Phase 1 — verify credentials and send the 6-digit code to the user's email. */
+  sendLoginCode: (payload: { email: string; password: string }) => Promise<{ email: string }>;
+  /** Phase 2 — verify the 6-digit code and create the authenticated session. */
+  confirmLoginCode: (payload: { email: string; otp: string }) => Promise<Session>;
   logout: () => void;
   resendOtp: (email: string, purpose: OtpPurpose) => Promise<{ message: string }>;
 };
@@ -37,19 +39,38 @@ function readStoredSession(): Session | null {
 }
 
 export function AppSessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-
-  useEffect(() => {
-    setSession(readStoredSession());
-  }, []);
+  // Read session synchronously on first render so ProtectedRoute never sees null
+  // on a page reload (avoids the brief redirect-to-login race condition).
+  const [session, setSession] = useState<Session | null>(readStoredSession);
 
   const value = useMemo<SessionContextValue>(
     () => ({
       session,
       isAuthenticated: Boolean(session),
-      async login(payload) {
+
+      async sendLoginCode(payload) {
+        // Try the real API first; fall back to demo mode when backend is unavailable.
         try {
           const response = await authApi.login(payload);
+          return { email: response.email };
+        } catch {
+          const demoMatch = demoAccounts.find(
+            (account) =>
+              account.email === payload.email.toLowerCase() &&
+              account.password === payload.password,
+          );
+          if (!demoMatch) {
+            throw new Error("Invalid email or password. Please check your credentials.");
+          }
+          // In demo mode, we skip the real OTP and return the email to advance to phase 2.
+          return { email: payload.email.toLowerCase() };
+        }
+      },
+
+      async confirmLoginCode(payload) {
+        // Try the real verify endpoint; fall back to demo mode.
+        try {
+          const response = await authApi.verifyLoginOtp(payload);
           const nextSession: Session = {
             token: response.access_token,
             role: response.role,
@@ -58,33 +79,32 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
           setSession(nextSession);
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
           return nextSession;
-        } catch (error) {
+        } catch {
           const demoMatch = demoAccounts.find(
-            (account) =>
-              account.email === payload.email.toLowerCase() &&
-              account.password === payload.password,
+            (account) => account.email === payload.email.toLowerCase(),
           );
-
           if (!demoMatch) {
-            throw error;
+            throw new Error("The code you entered is incorrect. Please try again.");
           }
-
+          // In demo mode any code passes — create a demo session.
           const nextSession = createDemoSession(demoMatch.role as UserRole);
           setSession(nextSession);
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
           return nextSession;
         }
       },
+
       logout() {
         setSession(null);
         localStorage.removeItem(SESSION_STORAGE_KEY);
       },
+
       async resendOtp(email, purpose) {
         try {
           await authApi.resendOtp({ email, purpose });
-          return { message: "OTP sent successfully." };
+          return { message: "A new code has been sent to your email." };
         } catch {
-          return { message: "Demo mode active. Treat this as an OTP resend success." };
+          return { message: "Demo mode — treat this as a successful code resend." };
         }
       },
     }),

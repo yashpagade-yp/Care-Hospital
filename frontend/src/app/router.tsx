@@ -1,6 +1,7 @@
 import { createBrowserRouter } from "react-router-dom";
 
 import { AppLayout } from "@/components/layout/AppLayout";
+import { WorkspaceLayout } from "@/components/layout/WorkspaceLayout";
 import { ProtectedRoute } from "@/components/routing/ProtectedRoute";
 import { AdminDashboardPage } from "@/features/dashboard/pages/AdminDashboardPage";
 import { AdminAppointmentsPage } from "@/features/dashboard/pages/AdminAppointmentsPage";
@@ -29,6 +30,7 @@ import { PatientVerifyOtpPage } from "@/features/auth/pages/PatientVerifyOtpPage
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
 
 export const router = createBrowserRouter([
+  // ── Public routes — SiteHeader + SiteFooter ──────────────────────────────
   {
     path: "/",
     element: <AppLayout />,
@@ -43,6 +45,14 @@ export const router = createBrowserRouter([
       { path: "doctor/set-credentials", element: <DoctorCredentialsPage /> },
       { path: "doctor/verify-otp", element: <DoctorVerifyOtpPage /> },
       { path: "doctor/complete-profile", element: <DoctorProfileSetupPage /> },
+    ],
+  },
+
+  // ── Workspace routes — NO header, NO footer (SidebarLayout handles chrome) ──
+  {
+    element: <WorkspaceLayout />,
+    children: [
+      // Patient workspace
       {
         element: <ProtectedRoute allowedRoles={["PATIENT"]} />,
         children: [
@@ -53,6 +63,8 @@ export const router = createBrowserRouter([
           { path: "patient/reviews", element: <PatientReviewsPage /> },
         ],
       },
+
+      // Doctor workspace
       {
         element: <ProtectedRoute allowedRoles={["DOCTOR"]} />,
         children: [
@@ -62,6 +74,8 @@ export const router = createBrowserRouter([
           { path: "doctor/prescriptions", element: <DoctorPrescriptionsPage /> },
         ],
       },
+
+      // Admin workspace
       {
         element: <ProtectedRoute allowedRoles={["ADMIN"]} />,
         children: [

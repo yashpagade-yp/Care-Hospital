@@ -22,7 +22,12 @@ type ListResponse<T> = { items: T[] };
 
 export const authApi = {
   login: (payload: { email: string; password: string }) =>
-    apiRequest<LoginResponse>("/v1/auth/login", {
+    apiRequest<OtpSentResponse>("/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  verifyLoginOtp: (payload: { email: string; otp: string }) =>
+    apiRequest<LoginResponse>("/v1/auth/verify-login-otp", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -54,7 +59,6 @@ export const userApi = {
     phone: string;
     email: string;
     password: string;
-    dob: string;
   }) =>
     apiRequest<PatientProfile>("/v1/patients/register", {
       method: "POST",
@@ -96,6 +100,14 @@ export const userApi = {
     apiRequest<PatientProfile | DoctorProfile | DoctorProfile>("/v1/users/me"),
   listDoctors: () => apiRequest<{ items: DoctorProfile[] }>("/v1/doctors"),
   listPatients: () => apiRequest<{ items: PatientProfile[] }>("/v1/patients"),
+  deleteDoctor: (doctorId: string) =>
+    apiRequest<{ message: string }>(`/v1/admin/doctors/${doctorId}`, {
+      method: "DELETE",
+    }),
+  suspendDoctor: (doctorId: string) =>
+    apiRequest<DoctorProfile>(`/v1/admin/doctors/${doctorId}/suspend`, {
+      method: "PATCH",
+    }),
 };
 
 export const invitationApi = {
@@ -218,6 +230,8 @@ export const availabilityApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  deleteAvailability: (availabilityId: string) =>
+    apiRequest<void>(`/v1/doctors/availability/${availabilityId}`, { method: "DELETE" }),
 };
 
 export const reviewApi = {

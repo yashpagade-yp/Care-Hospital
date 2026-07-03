@@ -55,10 +55,13 @@ class AppointmentController(BaseController):
             await self.crud_slot_hold.delete_expired_holds()
 
             date_time = self._normalize_datetime(slot_hold_data["date_time"])
+            # Preserve original offset-aware datetime for local-time slot comparison
+            original_date_time = slot_hold_data["date_time"]
             self._ensure_future_datetime(date_time=date_time)
             await self._ensure_slot_available(
                 doctor_id=slot_hold_data["doctor_id"],
                 date_time=date_time,
+                local_date_time=original_date_time,
             )
             active_hold = await self.crud_slot_hold.get_active_hold(
                 doctor_id=slot_hold_data["doctor_id"],
@@ -137,10 +140,10 @@ class AppointmentController(BaseController):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Slot hold has expired",
                 )
-            await self._ensure_slot_available(
-                doctor_id=slot_hold.doctor_id,
-                date_time=self._normalize_datetime(slot_hold.date_time),
-            )
+            # NOTE: slot availability was already validated and the slot locked during
+            # create_slot_hold. Re-validating here with the UTC-stored datetime causes
+            # an IST/UTC mismatch (e.g. 09:00 IST stored as 03:30 UTC fails the check).
+            # The active, unexpired slot hold is the authoritative proof of availability.
 
             existing_appointment = await self.crud_appointment.get_by_doctor_and_datetime(
                 doctor_id=slot_hold.doctor_id,
@@ -647,47 +650,80 @@ class AppointmentController(BaseController):
                 detail="Appointment slot must be in the future",
             )
 
-    async def _ensure_slot_available(self, *, doctor_id: str, date_time) -> None:
+    async def _ensure_slot_available(
+        self,
+        *,
+        doctor_id: str,
+        date_time,
+        local_date_time=None,
+    ) -> None:
         """Validate that a doctor is available for the requested datetime.
 
-        Args:
-            doctor_id: Doctor whose schedule is being checked.
-            date_time: Requested appointment datetime in UTC.
-
-        Raises:
-            HTTPException 400: Requested slot is outside doctor availability.
+        Fetches all availability records for the doctor and filters in Python
+        to avoid ODMantic query-encoding issues with enum/str fields.
+        Uses local_date_time for HH:MM / day-of-week comparison so the doctor's
+        locally-set schedule is matched correctly regardless of UTC offset.
         """
 
-        exception_slots = await self.crud_availability.get_exception_slots(
-            doctor_id=doctor_id,
-            exception_date=date_time.date(),
-        )
-        appointment_time = date_time.time()
+        cmp_dt = local_date_time if local_date_time is not None else date_time
+        appointment_time_str = cmp_dt.strftime("%H:%M")
+        day_name = cmp_dt.strftime("%A").upper()          # e.g. "FRIDAY"
+        date_str = cmp_dt.date().isoformat()              # e.g. "2026-07-04"
 
-        for exception_slot in exception_slots:
-            if not (exception_slot.start_time <= appointment_time < exception_slot.end_time):
+        def _to_hhmm(t) -> str:
+            """Normalise stored time value (str or time object) to HH:MM."""
+            if t is None:
+                return "00:00"
+            s = str(t)  # covers datetime.time and str alike
+            return s[:5]
+
+        # Fetch ALL availability records for this doctor (no filter by day/time)
+        all_avail = await self.crud_availability.get_by_doctor_id(doctor_id=doctor_id)
+
+        # 1. Check exception slots for today
+        for slot in all_avail:
+            avail_type = slot.availability_type.value if hasattr(slot.availability_type, "value") else str(slot.availability_type)
+            exc_date = slot.exception_date[:10] if isinstance(slot.exception_date, str) else (
+                slot.exception_date.isoformat() if slot.exception_date else None
+            )
+            if exc_date != date_str:
                 continue
-            if exception_slot.availability_type == AvailabilityType.EXCEPTION_BLOCKED:
-                logging.warning(f"Doctor {doctor_id} has blocked exception slot at {date_time}")
+
+            st = _to_hhmm(slot.start_time)
+            et = _to_hhmm(slot.end_time)
+            if not (st <= appointment_time_str < et):
+                continue
+
+            if avail_type == "EXCEPTION_BLOCKED":
+                logging.warning(f"Doctor {doctor_id} has blocked exception slot at {cmp_dt}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Doctor is not available for the selected slot",
                 )
-            if exception_slot.availability_type == AvailabilityType.EXCEPTION_AVAILABLE:
-                return
+            if avail_type == "EXCEPTION_AVAILABLE":
+                return  # explicitly available — allow booking
 
-        day_of_week = DayOfWeek[date_time.strftime("%A").upper()]
-        recurring_slots = await self.crud_availability.get_recurring_slots(
-            doctor_id=doctor_id,
-            day_of_week=day_of_week,
+        # 2. Check recurring weekly slots for this day
+        for slot in all_avail:
+            avail_type = slot.availability_type.value if hasattr(slot.availability_type, "value") else str(slot.availability_type)
+            if avail_type != "RECURRING":
+                continue
+
+            slot_day = slot.day_of_week.value if hasattr(slot.day_of_week, "value") else str(slot.day_of_week)
+            if slot_day != day_name:
+                continue
+
+            st = _to_hhmm(slot.start_time)
+            et = _to_hhmm(slot.end_time)
+            if st <= appointment_time_str < et:
+                return  # found a matching slot — allow booking
+
+        logging.warning(
+            f"Doctor {doctor_id} has no availability for {cmp_dt} (local). "
+            f"Day={day_name}, Time={appointment_time_str}. "
+            f"Total slots found: {len(all_avail)}"
         )
-        has_matching_recurring_slot = any(
-            recurring_slot.start_time <= appointment_time < recurring_slot.end_time
-            for recurring_slot in recurring_slots
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Doctor is not available for the selected slot",
         )
-        if not has_matching_recurring_slot:
-            logging.warning(f"Doctor {doctor_id} has no recurring availability for {date_time}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Doctor is not available for the selected slot",
-            )

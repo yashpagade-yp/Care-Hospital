@@ -3,7 +3,8 @@ export type DoctorStatus = "REGISTERED" | "ACTIVE" | "SUSPENDED";
 export type OtpPurpose =
   | "DOCTOR_INVITE_VERIFY"
   | "PATIENT_REGISTER_VERIFY"
-  | "PASSWORD_RESET_VERIFY";
+  | "PASSWORD_RESET_VERIFY"
+  | "LOGIN_VERIFY";
 export type AppointmentStatus =
   | "CONFIRMED"
   | "COMPLETED"
@@ -43,6 +44,7 @@ export type DoctorProfile = UserSummary & {
   qualification?: string | null;
   specialty?: string | null;
   experience_years?: number | null;
+  consultation_fee?: number | null;
   services: string[];
   doctor_status?: DoctorStatus | null;
 };

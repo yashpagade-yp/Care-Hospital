@@ -33,18 +33,22 @@ class AuthController(BaseController):
         self.crud_user = CRUDUser()
 
     async def login(self, email: str, password: str) -> dict:
-        """Authenticate a user with email and password.
+        """Verify credentials for all roles and dispatch a login OTP.
+
+        Phase 1 of the two-step login flow. Validates email and password,
+        then sends a LOGIN_VERIFY OTP to the user's registered email address.
+        No access token is returned at this stage.
 
         Args:
             email: Email address used for login.
             password: Plain-text password submitted by the user.
 
         Returns:
-            dict: Auth response payload with token, role, and user summary.
+            dict: OTP dispatch metadata — message, email, and purpose.
 
         Raises:
             HTTPException 401: Credentials are invalid.
-            HTTPException 403: User account is not ready for login.
+            HTTPException 403: Doctor profile setup is incomplete.
         """
 
         try:
@@ -58,19 +62,70 @@ class AuthController(BaseController):
                 )
 
             if user.role in {UserRole.PATIENT, UserRole.DOCTOR} and not user.is_otp_verified:
-                logging.warning(f"Login blocked because OTP verification is incomplete for {email}")
+                logging.warning(f"Login blocked because registration is incomplete for {email}")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="OTP verification is required before login",
+                    detail="Please complete your registration before logging in",
                 )
 
             if user.role == UserRole.DOCTOR and user.doctor_status != DoctorStatus.ACTIVE:
                 logging.warning(f"Doctor login blocked because profile setup is incomplete for {email}")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Doctor profile setup must be completed before login",
+                    detail="Your doctor profile setup must be completed before you can log in",
                 )
 
+            otp_payload, otp_code = self._issue_otp_payload(purpose=OtpPurpose.LOGIN_VERIFY)
+            await self._send_otp_email(
+                email=user.email,
+                recipient_name=user.name,
+                otp_code=otp_code,
+                purpose=OtpPurpose.LOGIN_VERIFY,
+            )
+            await self.crud_user.update(
+                id=str(user.id),
+                obj_in={"otp": otp_payload},
+            )
+            return {
+                "message": "A 6-digit verification code has been sent to your email",
+                "email": user.email,
+                "purpose": OtpPurpose.LOGIN_VERIFY,
+            }
+        except HTTPException:
+            raise
+        except Exception as error:
+            logging.error(f"Error in AuthController.login: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
+            )
+
+    async def verify_login_otp(self, email: str, otp: str) -> dict:
+        """Verify the login OTP and issue the access token.
+
+        Phase 2 of the two-step login flow. Validates the LOGIN_VERIFY OTP
+        and returns the signed JWT access token with role and user summary.
+
+        Args:
+            email: Email address verifying the login OTP.
+            otp: Plain 6-digit OTP submitted by the user.
+
+        Returns:
+            dict: Auth response payload with access token, role, and user summary.
+
+        Raises:
+            HTTPException 400: OTP is invalid or expired.
+            HTTPException 404: User does not exist.
+        """
+
+        try:
+            logging.info("Executing AuthController.verify_login_otp")
+            user = await self._get_user_by_email(email=email)
+            await self._validate_otp(
+                user=user,
+                otp=otp,
+                expected_purpose=OtpPurpose.LOGIN_VERIFY,
+            )
             return {
                 "access_token": signJWT(user_role=user.role.value, id=str(user.id)),
                 "token_type": "bearer",
@@ -80,7 +135,7 @@ class AuthController(BaseController):
         except HTTPException:
             raise
         except Exception as error:
-            logging.error(f"Error in AuthController.login: {error}")
+            logging.error(f"Error in AuthController.verify_login_otp: {error}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
@@ -383,13 +438,16 @@ class AuthController(BaseController):
 
         if purpose == OtpPurpose.PASSWORD_RESET_VERIFY:
             title = "Reset your MedCare password"
-            description = "Use this one-time password to reset your MedCare password. The code expires in 10 minutes."
+            description = "Use this one-time code to reset your MedCare password. The code expires in 10 minutes."
         elif purpose == OtpPurpose.DOCTOR_INVITE_VERIFY:
             title = "Verify your MedCare doctor onboarding"
-            description = "Use this one-time password to continue your doctor onboarding flow. The code expires in 10 minutes."
+            description = "Use this one-time code to continue your doctor onboarding. The code expires in 10 minutes."
+        elif purpose == OtpPurpose.LOGIN_VERIFY:
+            title = "Your MedCare login code"
+            description = "Use this 6-digit code to complete your login. The code expires in 10 minutes. If you did not request this, please ignore this email."
         else:
             title = "Verify your MedCare account"
-            description = "Use this one-time password to verify your MedCare account. The code expires in 10 minutes."
+            description = "Use this one-time code to verify your MedCare account. The code expires in 10 minutes."
 
         template = generate_email_template(
             name=recipient_name,
