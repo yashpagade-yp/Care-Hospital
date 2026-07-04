@@ -44,6 +44,28 @@ class Appointment(Model):
 
     patient_id: str = Field(..., description="Identifier of the patient user")
     doctor_id: str = Field(..., description="Identifier of the doctor user")
+    patient_name: Optional[str] = Field(
+        default=None,
+        description="Patient name snapshot captured at booking time",
+    )
+    patient_phone: Optional[str] = Field(
+        default=None,
+        description="Patient phone snapshot captured at booking time",
+    )
+    patient_age: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=120,
+        description="Patient age confirmed during booking",
+    )
+    patient_gender: Optional[str] = Field(
+        default=None,
+        description="Patient gender confirmed during booking",
+    )
+    patient_blood_group: Optional[str] = Field(
+        default=None,
+        description="Optional patient blood group captured during booking",
+    )
     date_time: datetime = Field(..., description="Scheduled date and time of the appointment")
     status: AppointmentStatus = Field(
         default=AppointmentStatus.CONFIRMED,

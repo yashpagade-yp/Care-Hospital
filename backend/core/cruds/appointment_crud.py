@@ -90,3 +90,13 @@ class CRUDAppointment(BaseCRUD[Appointment]):
             Appointment.status == status,
             sort=desc(Appointment.date_time),
         )
+
+    async def get_all(self) -> list[Appointment]:
+        """Read all appointments for admin operational views.
+
+        Returns:
+            list[Appointment]: All appointment records ordered by scheduled time.
+        """
+
+        logging.info("Executing CRUDAppointment.get_all")
+        return await self.get_many(sort=desc(Appointment.date_time))

@@ -77,6 +77,7 @@ class AdminDashboardResponse(BaseModel):
 
     profile: AdminProfileResponse = Field(..., description="Admin profile summary")
     doctor_count: int = Field(..., ge=0, description="Total number of doctors in the system")
+    patient_count: int = Field(..., ge=0, description="Total number of patients in the system")
     invitation_count: int = Field(
         ...,
         ge=0,

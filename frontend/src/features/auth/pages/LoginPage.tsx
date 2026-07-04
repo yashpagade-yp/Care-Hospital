@@ -1,5 +1,6 @@
 import { useState, useTransition } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { setPendingDoctorFlow } from "@/features/auth/storage";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
 
 type Phase = "credentials" | "verify-code";
@@ -19,6 +20,7 @@ export function LoginPage() {
   const [sentEmail, setSentEmail] = useState("");
   const [error, setError] = useState("");
   const [resendMsg, setResendMsg] = useState("");
+  const doctorProfileBlocked = error.includes("doctor profile setup must be completed");
 
   /* ── Phase 1: submit credentials ── */
   function handleSendCode(event: React.FormEvent) {
@@ -31,7 +33,11 @@ export function LoginPage() {
         setSentEmail(result.email);
         setPhase("verify-code");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Invalid email or password.");
+        const message = err instanceof Error ? err.message : "Invalid email or password.";
+        if (message.includes("doctor profile setup must be completed")) {
+          setPendingDoctorFlow({ email: email.toLowerCase() });
+        }
+        setError(message);
       }
     });
   }
@@ -135,6 +141,19 @@ export function LoginPage() {
                 </div>
 
                 {error && <div className="login-error">{error}</div>}
+                {doctorProfileBlocked ? (
+                  <button
+                    type="button"
+                    className="login-btn login-btn--ghost"
+                    onClick={() => {
+                      setPendingDoctorFlow({ email: email.toLowerCase() });
+                      navigate("/doctor/complete-profile");
+                    }}
+                    style={{ marginBottom: "0.85rem" }}
+                  >
+                    Continue doctor profile setup
+                  </button>
+                ) : null}
 
                 <button
                   type="submit"

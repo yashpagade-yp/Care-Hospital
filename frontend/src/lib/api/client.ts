@@ -5,6 +5,17 @@ export type ApiError = {
   status: number;
 };
 
+export function isApiError(error: unknown): error is ApiError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string" &&
+    "status" in error &&
+    typeof (error as { status?: unknown }).status === "number"
+  );
+}
+
 export async function apiRequest<T>(
   path: string,
   init?: RequestInit,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
+import { isApiError } from "@/lib/api/client";
 import { appointmentApi, availabilityApi, userApi } from "@/lib/api/endpoints";
 import type { DoctorAvailability, DoctorProfile } from "@/types/domain";
 import { PATIENT_NAV } from "@/features/dashboard/pages/PatientDashboardPage";
@@ -21,8 +22,14 @@ function toLocalISOString(d: Date): string {
   );
 }
 
+function slotTimestamp(value: string): number | null {
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
 function generateUpcomingSlots(
   availabilities: DoctorAvailability[],
+  bookedSlotTimes: string[],
   count = 5,
 ): { label: string; dateTime: string }[] {
   const dayMap: Record<string, number> = {
@@ -31,6 +38,11 @@ function generateUpcomingSlots(
   };
   const slots: { label: string; dateTime: string }[] = [];
   const now = new Date();
+  const bookedSlotSet = new Set(
+    bookedSlotTimes
+      .map(slotTimestamp)
+      .filter((timestamp): timestamp is number => timestamp !== null),
+  );
 
   for (let daysAhead = 0; daysAhead <= 14 && slots.length < count; daysAhead++) {
     const date = new Date(now);
@@ -45,6 +57,7 @@ function generateUpcomingSlots(
       const slotDate = new Date(date);
       slotDate.setHours(startH, startM, 0, 0);
       if (slotDate <= now) continue;
+      if (bookedSlotSet.has(slotDate.getTime())) continue;
 
       const label = daysAhead === 0
         ? `Today · ${avail.start_time}`
@@ -64,6 +77,7 @@ function generateUpcomingSlots(
       const d = new Date(now);
       d.setDate(d.getDate() + i);
       d.setHours(10, 0, 0, 0);
+      if (bookedSlotSet.has(d.getTime())) continue;
       slots.push({
         label: `${d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })} · 10:00 AM`,
         dateTime: toLocalISOString(d),
@@ -87,6 +101,7 @@ export function AppointmentBookingPage() {
   const [doctors, setDoctors] = useState<DoctorProfile[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [availability, setAvailability] = useState<DoctorAvailability[]>([]);
+  const [bookedSlotTimes, setBookedSlotTimes] = useState<string[]>([]);
   const [selectedSlot, setSelectedSlot] = useState("");
   // Patient details (Step 3) — editable so user can book for a family member
   const [patientName, setPatientName] = useState(session?.user.name ?? "");
@@ -106,7 +121,10 @@ export function AppointmentBookingPage() {
     [doctors, selectedDoctorId],
   );
 
-  const slots = useMemo(() => generateUpcomingSlots(availability), [availability]);
+  const slots = useMemo(
+    () => generateUpcomingSlots(availability, bookedSlotTimes),
+    [availability, bookedSlotTimes],
+  );
 
   // Load real doctors from backend
   useEffect(() => {
@@ -125,12 +143,20 @@ export function AppointmentBookingPage() {
     if (!selectedDoctorId) return;
     setLoadingSlots(true);
     setAvailability([]);
+    setBookedSlotTimes([]);
     setSelectedSlot("");
-    availabilityApi.listDoctorAvailability(selectedDoctorId)
-      .then((res) => {
-        setAvailability(res.items);
+    Promise.all([
+      availabilityApi.listDoctorAvailability(selectedDoctorId),
+      appointmentApi.listDoctorBookedSlots(selectedDoctorId),
+    ])
+      .then(([availabilityResponse, bookedSlotsResponse]) => {
+        setAvailability(availabilityResponse.items);
+        setBookedSlotTimes(bookedSlotsResponse.items);
       })
-      .catch(() => setAvailability([]))
+      .catch(() => {
+        setAvailability([]);
+        setBookedSlotTimes([]);
+      })
       .finally(() => setLoadingSlots(false));
   }, [selectedDoctorId]);
 
@@ -157,6 +183,9 @@ export function AppointmentBookingPage() {
           slot_hold_id: hold.id,
           patient_name: patientName || session?.user.name || "Patient",
           patient_phone: patientPhone || session?.user.phone || "",
+          patient_age: Number(patientAge),
+          patient_gender: patientGender,
+          patient_blood_group: patientBloodGroup || undefined,
           reason,
           fee: selectedDoctor?.consultation_fee ?? 500,
         });
@@ -164,9 +193,40 @@ export function AppointmentBookingPage() {
         setConfirmation(
           `✅ Appointment booked with ${selectedDoctor?.name ?? "the doctor"} on ${formatSlotFull(selectedSlot)}. You will receive a confirmation shortly.`,
         );
+        setBookedSlotTimes((current) => {
+          const selectedTimestamp = slotTimestamp(selectedSlot);
+          if (selectedTimestamp === null) {
+            return current;
+          }
+
+          const alreadyTracked = current.some(
+            (slot) => slotTimestamp(slot) === selectedTimestamp,
+          );
+          return alreadyTracked ? current : [...current, selectedSlot];
+        });
         setReason("");
-      } catch {
-        setError("Could not complete the booking. Please try again or contact support.");
+      } catch (error) {
+        if (isApiError(error) && error.status === 409) {
+          setBookedSlotTimes((current) => {
+            const selectedTimestamp = slotTimestamp(selectedSlot);
+            if (selectedTimestamp === null) {
+              return current;
+            }
+
+            const alreadyTracked = current.some(
+              (slot) => slotTimestamp(slot) === selectedTimestamp,
+            );
+            return alreadyTracked ? current : [...current, selectedSlot];
+          });
+          setError("This slot was just booked by someone else. Please choose another available time.");
+          return;
+        }
+
+        setError(
+          isApiError(error)
+            ? error.message
+            : "Could not complete the booking. Please try again or contact support.",
+        );
       }
     });
   }
@@ -300,8 +360,14 @@ export function AppointmentBookingPage() {
             ) : slots.length === 0 ? (
               <div className="ws-empty">
                 <div className="ws-empty__icon">📅</div>
-                <p className="ws-empty__title">No slots configured</p>
-                <p className="ws-empty__sub">This doctor has not set their availability yet.</p>
+                <p className="ws-empty__title">
+                  {availability.length > 0 ? "No free slots right now" : "No slots configured"}
+                </p>
+                <p className="ws-empty__sub">
+                  {availability.length > 0
+                    ? "All currently visible slots are already booked. Please try another doctor or refresh later."
+                    : "This doctor has not set their availability yet."}
+                </p>
               </div>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem", padding: "0 1.25rem 1.25rem" }}>

@@ -24,6 +24,7 @@ from backend.core.apis.schemas.responses_schemas.appointment_response_schema imp
     AppointmentListResponse,
     AppointmentRescheduleResponse,
     AppointmentResponse,
+    BookedSlotListResponse,
     SlotHoldResponse,
 )
 from backend.core.controllers.appointment_controller import AppointmentController
@@ -382,6 +383,96 @@ async def list_doctor_appointments(
     except Exception as error:
         logging.error(
             f"Error in GET /v1/doctors/{doctor_id}/appointments endpoint: {error}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
+@appointment_router.get(
+    "/v1/admin/appointments",
+    response_model=AppointmentListResponse,
+    tags=["Appointments"],
+)
+async def list_admin_appointments(
+    authenticated_user_details: dict = Depends(get_authenticated_user),
+):
+    """List all appointments for admin operational oversight.
+
+    Args:
+        authenticated_user_details: Decoded authenticated user context.
+
+    Returns:
+        AppointmentListResponse: Collection of platform appointment records.
+
+    Raises:
+        HTTPException 401: Authentication token is invalid or expired.
+        HTTPException 403: Authenticated user is not an admin.
+        HTTPException 500: Internal server error.
+    """
+
+    try:
+        logging.info("Calling GET /v1/admin/appointments endpoint")
+        require_roles(authenticated_user_details, allowed_roles={UserRole.ADMIN})
+        response = await AppointmentController().list_all_appointments()
+        return build_response(AppointmentListResponse, response)
+    except HTTPException as http_error:
+        logging.error(f"Error in GET /v1/admin/appointments endpoint: {http_error}")
+        raise http_error
+    except Exception as error:
+        logging.error(f"Error in GET /v1/admin/appointments endpoint: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
+@appointment_router.get(
+    "/v1/doctors/{doctor_id}/booked-slots",
+    response_model=BookedSlotListResponse,
+    tags=["Appointments"],
+)
+async def list_doctor_booked_slots(
+    doctor_id: str,
+    authenticated_user_details: dict = Depends(get_authenticated_user),
+):
+    """List booked slot datetimes for a doctor.
+
+    Returns only occupied slot times so authenticated booking users can avoid
+    selecting unavailable slots without receiving other patients' details.
+
+    Args:
+        doctor_id: Doctor identifier referenced by the route.
+        authenticated_user_details: Decoded authenticated user context.
+
+    Returns:
+        BookedSlotListResponse: Collection of booked doctor slot datetimes.
+
+    Raises:
+        HTTPException 401: Authentication token is invalid or expired.
+        HTTPException 403: Authenticated role is not allowed to view booking availability.
+        HTTPException 500: Internal server error.
+    """
+
+    try:
+        logging.info(f"Calling GET /v1/doctors/{doctor_id}/booked-slots endpoint")
+        require_roles(
+            authenticated_user_details,
+            allowed_roles={UserRole.PATIENT, UserRole.DOCTOR, UserRole.ADMIN},
+        )
+        response = await AppointmentController().list_doctor_booked_slots(
+            doctor_id=doctor_id
+        )
+        return build_response(BookedSlotListResponse, response)
+    except HTTPException as http_error:
+        logging.error(
+            f"Error in GET /v1/doctors/{doctor_id}/booked-slots endpoint: {http_error}"
+        )
+        raise http_error
+    except Exception as error:
+        logging.error(
+            f"Error in GET /v1/doctors/{doctor_id}/booked-slots endpoint: {error}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

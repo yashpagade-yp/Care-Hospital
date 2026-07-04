@@ -157,18 +157,16 @@ class AppointmentController(BaseController):
                 )
 
             patient = await self.crud_user.get_by_id(id=patient_id)
-            await self.crud_user.update(
-                id=patient_id,
-                obj_in={
-                    "name": confirmation_data["patient_name"],
-                    "phone": confirmation_data["patient_phone"],
-                },
-            )
 
             appointment = await self.crud_appointment.create(
                 obj_in={
                     "patient_id": patient_id,
                     "doctor_id": slot_hold.doctor_id,
+                    "patient_name": confirmation_data["patient_name"],
+                    "patient_phone": confirmation_data["patient_phone"],
+                    "patient_age": confirmation_data["patient_age"],
+                    "patient_gender": confirmation_data["patient_gender"],
+                    "patient_blood_group": confirmation_data.get("patient_blood_group"),
                     "date_time": self._normalize_datetime(slot_hold.date_time),
                     "status": AppointmentStatus.CONFIRMED,
                     "reason": confirmation_data.get("reason"),
@@ -187,9 +185,14 @@ class AppointmentController(BaseController):
 
             doctor = await self.crud_user.get_by_id(id=slot_hold.doctor_id)
             return {
-                "appointment": self._serialize_document(appointment),
+                "appointment": self._serialize_appointment(
+                    appointment=appointment,
+                    fallback_doctor_name=doctor.name if doctor else None,
+                    fallback_patient_name=confirmation_data["patient_name"],
+                    fallback_patient_phone=confirmation_data["patient_phone"],
+                ),
                 "payment": self._serialize_document(payment),
-                "patient_name": patient.name if patient else confirmation_data["patient_name"],
+                "patient_name": confirmation_data["patient_name"],
                 "doctor_name": doctor.name if doctor else None,
             }
         except HTTPException:
@@ -329,6 +332,11 @@ class AppointmentController(BaseController):
                 obj_in={
                     "patient_id": appointment.patient_id,
                     "doctor_id": appointment.doctor_id,
+                    "patient_name": appointment.patient_name,
+                    "patient_phone": appointment.patient_phone,
+                    "patient_age": appointment.patient_age,
+                    "patient_gender": appointment.patient_gender,
+                    "patient_blood_group": appointment.patient_blood_group,
                     "date_time": new_date_time,
                     "status": AppointmentStatus.CONFIRMED,
                     "reason": reschedule_data.get("reason") or appointment.reason,
@@ -433,7 +441,9 @@ class AppointmentController(BaseController):
         try:
             logging.info("Executing AppointmentController.list_patient_appointments")
             appointments = await self.crud_appointment.get_by_patient_id(patient_id=patient_id)
-            return {"items": self._serialize_documents(appointments)}
+            return {
+                "items": [self._serialize_appointment(appointment=appointment) for appointment in appointments]
+            }
         except Exception as error:
             logging.error(f"Error in AppointmentController.list_patient_appointments: {error}")
             raise HTTPException(
@@ -454,9 +464,111 @@ class AppointmentController(BaseController):
         try:
             logging.info("Executing AppointmentController.list_doctor_appointments")
             appointments = await self.crud_appointment.get_by_doctor_id(doctor_id=doctor_id)
-            return {"items": self._serialize_documents(appointments)}
+            patient_lookup = await self._build_user_lookup(
+                user_ids=[
+                    appointment.patient_id
+                    for appointment in appointments
+                    if appointment.patient_name is None or appointment.patient_phone is None
+                ]
+            )
+            return {
+                "items": [
+                    self._serialize_appointment(
+                        appointment=appointment,
+                        fallback_patient_name=(
+                            patient_lookup.get(appointment.patient_id).name
+                            if patient_lookup.get(appointment.patient_id)
+                            else None
+                        ),
+                        fallback_patient_phone=(
+                            patient_lookup.get(appointment.patient_id).phone
+                            if patient_lookup.get(appointment.patient_id)
+                            else None
+                        ),
+                    )
+                    for appointment in appointments
+                ]
+            }
         except Exception as error:
             logging.error(f"Error in AppointmentController.list_doctor_appointments: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
+            )
+
+    async def list_doctor_booked_slots(self, doctor_id: str) -> dict:
+        """List booked slot datetimes for a doctor's active schedule.
+
+        Returns only occupied times so booking screens can hide unavailable
+        slots without exposing other patients' appointment details.
+
+        Args:
+            doctor_id: Doctor identifier used for the booking lookup.
+
+        Returns:
+            dict: List payload containing booked appointment datetimes.
+        """
+
+        try:
+            logging.info("Executing AppointmentController.list_doctor_booked_slots")
+            appointments = await self.crud_appointment.get_by_doctor_id(doctor_id=doctor_id)
+            return {
+                "items": [
+                    appointment.date_time
+                    for appointment in appointments
+                    if appointment.status
+                    not in {AppointmentStatus.CANCELLED, AppointmentStatus.RESCHEDULED}
+                ]
+            }
+        except Exception as error:
+            logging.error(f"Error in AppointmentController.list_doctor_booked_slots: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
+            )
+
+    async def list_all_appointments(self) -> dict:
+        """List all appointments for admin operational views.
+
+        Returns:
+            dict: Serialized appointment list payload enriched with patient and doctor names.
+        """
+
+        try:
+            logging.info("Executing AppointmentController.list_all_appointments")
+            appointments = await self.crud_appointment.get_all()
+            user_lookup = await self._build_user_lookup(
+                user_ids=[
+                    user_id
+                    for appointment in appointments
+                    for user_id in (appointment.patient_id, appointment.doctor_id)
+                ]
+            )
+            return {
+                "items": [
+                    self._serialize_appointment(
+                        appointment=appointment,
+                        fallback_doctor_name=(
+                            user_lookup.get(appointment.doctor_id).name
+                            if user_lookup.get(appointment.doctor_id)
+                            else None
+                        ),
+                        fallback_patient_name=(
+                            user_lookup.get(appointment.patient_id).name
+                            if user_lookup.get(appointment.patient_id)
+                            else None
+                        ),
+                        fallback_patient_phone=(
+                            user_lookup.get(appointment.patient_id).phone
+                            if user_lookup.get(appointment.patient_id)
+                            else None
+                        ),
+                    )
+                    for appointment in appointments
+                ]
+            }
+        except Exception as error:
+            logging.error(f"Error in AppointmentController.list_all_appointments: {error}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
@@ -488,9 +600,19 @@ class AppointmentController(BaseController):
             patient = await self.crud_user.get_by_id(id=appointment.patient_id)
             doctor = await self.crud_user.get_by_id(id=appointment.doctor_id)
             return {
-                "appointment": self._serialize_document(appointment),
-                "patient_name": patient.name if patient else None,
+                "appointment": self._serialize_appointment(
+                    appointment=appointment,
+                    fallback_doctor_name=doctor.name if doctor else None,
+                    fallback_patient_name=patient.name if patient else None,
+                    fallback_patient_phone=patient.phone if patient else None,
+                ),
+                "patient_name": appointment.patient_name or (patient.name if patient else None),
                 "doctor_name": doctor.name if doctor else None,
+                "patient_phone": appointment.patient_phone or (patient.phone if patient else None),
+                "patient_age": appointment.patient_age,
+                "patient_gender": appointment.patient_gender,
+                "patient_blood_group": appointment.patient_blood_group,
+                "reason": appointment.reason,
             }
         except HTTPException:
             raise
@@ -727,3 +849,49 @@ class AppointmentController(BaseController):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Doctor is not available for the selected slot",
         )
+
+    async def _build_user_lookup(self, *, user_ids: list[str]) -> dict[str, object]:
+        """Build a lookup of users for appointment fallback display fields.
+
+        Args:
+            user_ids: User identifiers referenced by appointment records.
+
+        Returns:
+            dict[str, object]: Mapping of user id to user record.
+        """
+
+        lookup: dict[str, object] = {}
+        for user_id in set(user_ids):
+            user = await self.crud_user.get_by_id(id=user_id)
+            if user is not None:
+                lookup[user_id] = user
+        return lookup
+
+    def _serialize_appointment(
+        self,
+        *,
+        appointment,
+        fallback_doctor_name: str | None = None,
+        fallback_patient_name: str | None = None,
+        fallback_patient_phone: str | None = None,
+    ) -> dict:
+        """Serialize appointment data with patient booking context for the UI.
+
+        Args:
+            appointment: Appointment record being serialized.
+            fallback_doctor_name: Fallback doctor name when snapshot data is missing.
+            fallback_patient_name: Fallback patient name when snapshot data is missing.
+            fallback_patient_phone: Fallback patient phone when snapshot data is missing.
+
+        Returns:
+            dict: Serialized appointment payload enriched for doctor-facing views.
+        """
+
+        payload = self._serialize_document(appointment)
+        if not payload.get("doctor_name"):
+            payload["doctor_name"] = fallback_doctor_name
+        if not payload.get("patient_name"):
+            payload["patient_name"] = fallback_patient_name
+        if not payload.get("patient_phone"):
+            payload["patient_phone"] = fallback_patient_phone
+        return payload

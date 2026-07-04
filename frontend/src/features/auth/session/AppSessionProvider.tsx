@@ -6,6 +6,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { setPendingDoctorFlow } from "@/features/auth/storage";
+import { isApiError } from "@/lib/api/client";
 import { authApi } from "@/lib/api/endpoints";
 import { createDemoSession, demoAccounts } from "@/lib/mock/data";
 import type { OtpPurpose, Session, UserRole } from "@/types/domain";
@@ -53,7 +55,17 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
         try {
           const response = await authApi.login(payload);
           return { email: response.email };
-        } catch {
+        } catch (error) {
+          if (isApiError(error)) {
+            if (
+              error.status === 403 &&
+              error.message.includes("doctor profile setup must be completed")
+            ) {
+              setPendingDoctorFlow({ email: payload.email.toLowerCase() });
+            }
+            throw new Error(error.message);
+          }
+
           const demoMatch = demoAccounts.find(
             (account) =>
               account.email === payload.email.toLowerCase() &&
@@ -79,7 +91,11 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
           setSession(nextSession);
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
           return nextSession;
-        } catch {
+        } catch (error) {
+          if (isApiError(error)) {
+            throw new Error(error.message);
+          }
+
           const demoMatch = demoAccounts.find(
             (account) => account.email === payload.email.toLowerCase(),
           );
@@ -103,7 +119,10 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
         try {
           await authApi.resendOtp({ email, purpose });
           return { message: "A new code has been sent to your email." };
-        } catch {
+        } catch (error) {
+          if (isApiError(error)) {
+            throw new Error(error.message);
+          }
           return { message: "Demo mode — treat this as a successful code resend." };
         }
       },

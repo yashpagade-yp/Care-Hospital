@@ -1,20 +1,25 @@
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
-import { DOCTOR_NAV } from "./DoctorDashboardPage";
-import { FormField } from "@/components/ui/FormField";
+import { PrescriptionSheet } from "@/components/ui/PrescriptionSheet";
 import { StatusBanner } from "@/components/ui/StatusBanner";
 import { useAppSession } from "@/features/auth/session/AppSessionProvider";
-import { loadPrescriptionsForDoctor } from "@/features/shared/resource-loaders";
+import { loadDoctorAppointments, loadPrescriptionsForDoctor } from "@/features/shared/resource-loaders";
 import { prescriptionApi } from "@/lib/api/endpoints";
-import type { Prescription } from "@/types/domain";
+import { formatDateTime } from "@/lib/utils/format";
+import type { Appointment, Prescription } from "@/types/domain";
+
+import { DOCTOR_NAV } from "./DoctorDashboardPage";
+
+const HOSPITAL_NAME = "MedCare Hospital";
+const HOSPITAL_ADDRESS = "24 Green Avenue, Lakeview Road, Bengaluru 560048";
 
 export function DoctorPrescriptionsPage() {
   const { session } = useAppSession();
   const [items, setItems] = useState<Prescription[]>([]);
-  const [appointmentId, setAppointmentId] = useState("appt-002");
-  const [medicines, setMedicines] = useState("Vitamin D, Sleep support tablets");
-  const [notes, setNotes] = useState("");
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointmentId, setAppointmentId] = useState("");
+  const [medicines, setMedicines] = useState("");
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -23,7 +28,39 @@ export function DoctorPrescriptionsPage() {
       return;
     }
     loadPrescriptionsForDoctor(session.user.id).then(setItems);
+    loadDoctorAppointments(session.user.id).then((loaded) => setAppointments(loaded as Appointment[]));
   }, [session]);
+
+  const prescribedAppointmentIds = useMemo(
+    () => new Set(items.map((item) => item.appointment_id)),
+    [items],
+  );
+
+  const completedAppointments = useMemo(
+    () =>
+      appointments.filter(
+        (appointment) =>
+          appointment.status === "COMPLETED" && !prescribedAppointmentIds.has(appointment.id),
+      ),
+    [appointments, prescribedAppointmentIds],
+  );
+
+  const selectedAppointment = useMemo(
+    () => completedAppointments.find((appointment) => appointment.id === appointmentId) ?? null,
+    [appointmentId, completedAppointments],
+  );
+
+  useEffect(() => {
+    if (completedAppointments.length === 0) {
+      if (appointmentId) {
+        setAppointmentId("");
+      }
+      return;
+    }
+    if (!appointmentId || !completedAppointments.some((appointment) => appointment.id === appointmentId)) {
+      setAppointmentId(completedAppointments[0].id);
+    }
+  }, [appointmentId, completedAppointments]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,8 +69,10 @@ export function DoctorPrescriptionsPage() {
     startTransition(async () => {
       const payload = {
         appointment_id: appointmentId,
-        medicines: medicines.split(",").map((item) => item.trim()).filter(Boolean),
-        notes,
+        medicines: medicines
+          .split(/\r?\n|,/)
+          .map((item) => item.trim())
+          .filter(Boolean),
       };
 
       try {
@@ -45,9 +84,16 @@ export function DoctorPrescriptionsPage() {
             id: `rx-${current.length + 10}`,
             appointment_id: appointmentId,
             doctor_id: session?.user.id ?? "doctor-demo",
-            patient_id: "patient-101",
+            doctor_name: session?.user.name ?? "Treating Doctor",
+            patient_id: selectedAppointment?.patient_id ?? "patient-101",
+            patient_name: selectedAppointment?.patient_name ?? "Patient",
+            patient_phone: selectedAppointment?.patient_phone ?? null,
+            patient_age: selectedAppointment?.patient_age ?? null,
+            patient_gender: selectedAppointment?.patient_gender ?? null,
+            patient_blood_group: selectedAppointment?.patient_blood_group ?? null,
+            visit_reason: selectedAppointment?.reason ?? null,
             medicines: payload.medicines,
-            notes,
+            notes: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -55,6 +101,7 @@ export function DoctorPrescriptionsPage() {
         ]);
       }
 
+      setMedicines("");
       setMessage("Prescription saved successfully.");
     });
   }
@@ -66,35 +113,105 @@ export function DoctorPrescriptionsPage() {
           <div className="surface-card__header">
             <div>
               <p className="eyebrow">Create prescription</p>
-              <h2>Consultation notes and medicines</h2>
+              <h2>Patient details and medicines</h2>
             </div>
           </div>
           <form className="form-grid" onSubmit={handleSubmit}>
-            <FormField
-              label="Appointment ID"
-              value={appointmentId}
-              onChange={(event) => setAppointmentId(event.target.value)}
-            />
-            <div className="form-actions--full">
-              <FormField
-                label="Medicines"
-                value={medicines}
-                onChange={(event) => setMedicines(event.target.value)}
-                hint="Enter comma-separated medicines."
-              />
+            <div className="form-actions--full" style={{ display: "grid", gap: "0.8rem" }}>
+              <label style={{ display: "grid", gap: "0.35rem" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-soft)" }}>
+                  Completed appointment
+                </span>
+                <select
+                  value={appointmentId}
+                  onChange={(event) => setAppointmentId(event.target.value)}
+                  disabled={completedAppointments.length === 0}
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem 0.9rem",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--line)",
+                    background: "var(--surface)",
+                    font: "inherit",
+                  }}
+                >
+                  {completedAppointments.length === 0 ? (
+                    <option value="">No completed appointments available</option>
+                  ) : null}
+                  {completedAppointments.map((appointment) => (
+                    <option key={appointment.id} value={appointment.id}>
+                      {appointment.patient_name ?? "Patient"} - {formatDateTime(appointment.date_time)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
+
+            {selectedAppointment ? (
+              <div
+                className="form-actions--full"
+                style={{
+                  padding: "1rem",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--surface-muted)",
+                }}
+              >
+                <div style={{ display: "grid", gap: "0.45rem" }}>
+                  <h3 style={{ margin: 0, color: "var(--navy)" }}>
+                    {selectedAppointment.patient_name ?? "Patient"}
+                  </h3>
+                  <p style={{ margin: 0, color: "var(--text-soft)", fontSize: "0.9rem" }}>
+                    {selectedAppointment.patient_age ? `${selectedAppointment.patient_age} years` : "Age not provided"}
+                    {selectedAppointment.patient_gender ? ` • ${selectedAppointment.patient_gender}` : ""}
+                    {selectedAppointment.patient_blood_group ? ` • ${selectedAppointment.patient_blood_group}` : ""}
+                  </p>
+                  <p style={{ margin: 0, color: "var(--text-soft)", fontSize: "0.9rem" }}>
+                    {selectedAppointment.patient_phone ?? "Phone not provided"}
+                  </p>
+                  <p style={{ margin: 0, color: "var(--text-soft)", fontSize: "0.9rem" }}>
+                    Appointment: {formatDateTime(selectedAppointment.date_time)}
+                  </p>
+                  <p style={{ margin: 0, color: "var(--text-soft)", fontSize: "0.9rem" }}>
+                    Reason: {selectedAppointment.reason ?? "Not provided"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
             <div className="form-actions--full">
-              <FormField
-                as="textarea"
-                label="Notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                rows={4}
-              />
+              <label style={{ display: "grid", gap: "0.35rem" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-soft)" }}>
+                  Medicines and dosage
+                </span>
+                <textarea
+                  value={medicines}
+                  onChange={(event) => setMedicines(event.target.value)}
+                  rows={5}
+                  placeholder={"Paracetamol 650mg - 1 tablet twice daily\nVitamin D3 - 1 capsule after lunch"}
+                  style={{
+                    width: "100%",
+                    padding: "0.85rem 0.9rem",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--line)",
+                    font: "inherit",
+                    resize: "vertical",
+                    minHeight: "7rem",
+                  }}
+                />
+              </label>
+              <p style={{ margin: "0.45rem 0 0", color: "var(--text-soft)", fontSize: "0.8rem" }}>
+                Add one medicine per line with the required dosage.
+              </p>
             </div>
+
             <div className="form-actions form-actions--full">
               {message ? <StatusBanner tone="success">{message}</StatusBanner> : null}
-              <button type="submit" className="button button--primary" disabled={isPending}>
+              <button
+                type="submit"
+                className="button button--primary"
+                disabled={isPending || !appointmentId || medicines.trim().length === 0}
+              >
                 {isPending ? "Saving..." : "Save prescription"}
               </button>
             </div>
@@ -110,18 +227,21 @@ export function DoctorPrescriptionsPage() {
           </div>
           <div className="stack-list">
             {items.map((item) => (
-              <article key={item.id} className="stack-list__item stack-list__item--block">
-                <div>
-                  <h3>{item.appointment_id}</h3>
-                  <p>Patient {item.patient_id}</p>
-                </div>
-                <ul className="chip-row">
-                  {item.medicines.map((medicine) => (
-                    <li key={medicine} className="chip">{medicine}</li>
-                  ))}
-                </ul>
-                <p>{item.notes ?? "No additional notes."}</p>
-              </article>
+              <PrescriptionSheet
+                key={item.id}
+                hospitalName={HOSPITAL_NAME}
+                hospitalAddress={HOSPITAL_ADDRESS}
+                doctorName={item.doctor_name ?? session?.user.name ?? "Doctor"}
+                patientName={item.patient_name ?? "Patient"}
+                patientPhone={item.patient_phone}
+                patientAge={item.patient_age}
+                patientGender={item.patient_gender}
+                patientBloodGroup={item.patient_blood_group}
+                visitReason={item.visit_reason}
+                medicines={item.medicines}
+                notes={item.notes}
+                issuedAt={formatDateTime(item.updated_at)}
+              />
             ))}
           </div>
         </section>

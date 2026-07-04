@@ -30,6 +30,15 @@ class AppointmentResponse(BaseModel):
     id: str = Field(..., description="Unique identifier of the appointment")
     patient_id: str = Field(..., description="Patient linked to the appointment")
     doctor_id: str = Field(..., description="Doctor linked to the appointment")
+    doctor_name: str | None = Field(default=None, description="Doctor display name for the appointment")
+    patient_name: str | None = Field(default=None, description="Patient display name for the appointment")
+    patient_phone: str | None = Field(default=None, description="Patient phone linked to the booking")
+    patient_age: int | None = Field(default=None, description="Patient age linked to the booking")
+    patient_gender: str | None = Field(default=None, description="Patient gender linked to the booking")
+    patient_blood_group: str | None = Field(
+        default=None,
+        description="Patient blood group linked to the booking",
+    )
     date_time: datetime = Field(..., description="Scheduled appointment date and time")
     status: AppointmentStatus = Field(..., description="Current appointment status")
     reason: str | None = Field(default=None, description="Optional visit reason")
@@ -65,6 +74,16 @@ class AppointmentListItemResponse(BaseModel):
     id: str = Field(..., description="Unique identifier of the appointment")
     patient_id: str = Field(..., description="Patient linked to the appointment")
     doctor_id: str = Field(..., description="Doctor linked to the appointment")
+    doctor_name: str | None = Field(default=None, description="Doctor display name for list views")
+    patient_name: str | None = Field(default=None, description="Patient display name for list views")
+    patient_phone: str | None = Field(default=None, description="Patient phone for list views")
+    patient_age: int | None = Field(default=None, description="Patient age for list views")
+    patient_gender: str | None = Field(default=None, description="Patient gender for list views")
+    patient_blood_group: str | None = Field(
+        default=None,
+        description="Patient blood group for list views",
+    )
+    reason: str | None = Field(default=None, description="Optional visit reason")
     date_time: datetime = Field(..., description="Scheduled appointment date and time")
     status: AppointmentStatus = Field(..., description="Current appointment status")
     fee: float = Field(..., description="Consultation fee charged for the appointment")
@@ -83,6 +102,17 @@ class AppointmentListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BookedSlotListResponse(BaseModel):
+    """Booked slot datetime list response payload."""
+
+    items: list[datetime] = Field(
+        default_factory=list,
+        description="Collection of already-booked doctor slot datetimes",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class AppointmentDetailResponse(BaseModel):
     """Expanded appointment response with lightweight participant summaries."""
 
@@ -94,6 +124,26 @@ class AppointmentDetailResponse(BaseModel):
     doctor_name: str | None = Field(
         default=None,
         description="Doctor display name for role-specific views",
+    )
+    patient_phone: str | None = Field(
+        default=None,
+        description="Patient phone linked to the booking",
+    )
+    patient_age: int | None = Field(
+        default=None,
+        description="Patient age linked to the booking",
+    )
+    patient_gender: str | None = Field(
+        default=None,
+        description="Patient gender linked to the booking",
+    )
+    patient_blood_group: str | None = Field(
+        default=None,
+        description="Patient blood group linked to the booking",
+    )
+    reason: str | None = Field(
+        default=None,
+        description="Patient-provided visit reason",
     )
 
     model_config = ConfigDict(extra="forbid")

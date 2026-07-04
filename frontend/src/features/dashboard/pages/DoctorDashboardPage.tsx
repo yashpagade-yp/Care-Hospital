@@ -83,7 +83,9 @@ export function DoctorDashboardPage() {
                       <span className="ws-list-item__title">
                         {formatDateTime(apt.date_time)}
                       </span>
-                      <span className="ws-list-item__sub">Patient consultation</span>
+                      <span className="ws-list-item__sub">
+                        {apt.patient_name ? `${apt.patient_name} consultation` : "Patient consultation"}
+                      </span>
                     </div>
                     <span className={`ws-badge ws-badge--${apt.status.toLowerCase()}`}>
                       {apt.status}

@@ -9,6 +9,16 @@ import { appointmentApi } from "@/lib/api/endpoints";
 import { formatDateTime } from "@/lib/utils/format";
 import type { Appointment } from "@/types/domain";
 
+function formatPatientSummary(appointment: Appointment) {
+  const summaryParts = [
+    appointment.patient_age ? `${appointment.patient_age} yrs` : null,
+    appointment.patient_gender ?? null,
+    appointment.patient_blood_group ? `Blood ${appointment.patient_blood_group}` : null,
+  ].filter(Boolean);
+
+  return summaryParts.length > 0 ? summaryParts.join(" • ") : "Patient information not available";
+}
+
 export function DoctorAppointmentsPage() {
   const { session } = useAppSession();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -58,7 +68,26 @@ export function DoctorAppointmentsPage() {
               {appointments.map((appointment) => (
                 <tr key={appointment.id}>
                   <td>{formatDateTime(appointment.date_time)}</td>
-                  <td>{appointment.patient_id}</td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                      <span style={{ fontWeight: 700, color: "var(--navy)" }}>
+                        {appointment.patient_name ?? "Patient"}
+                      </span>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-soft)" }}>
+                        {formatPatientSummary(appointment)}
+                      </span>
+                      {appointment.patient_phone ? (
+                        <span style={{ fontSize: "0.78rem", color: "var(--text-soft)" }}>
+                          {appointment.patient_phone}
+                        </span>
+                      ) : null}
+                      {appointment.reason ? (
+                        <span style={{ fontSize: "0.78rem", color: "var(--text-soft)" }}>
+                          Reason: {appointment.reason}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
                   <td><span className={`pill pill--${appointment.status.toLowerCase()}`}>{appointment.status}</span></td>
                   <td>Rs. {appointment.fee}</td>
                   <td>

@@ -81,7 +81,7 @@ class UserController(BaseController):
                     "otp": otp_payload,
                 }
             )
-            response = self._serialize_document(user)
+            response = self._serialize_user_document(user)
             response["message"] = "Patient registered successfully. Verify OTP to activate the account."
             return response
         except HTTPException:
@@ -130,7 +130,7 @@ class UserController(BaseController):
                     },
                 },
             )
-            return self._serialize_document(updated_user)
+            return self._serialize_user_document(updated_user)
         except HTTPException:
             raise
         except Exception as error:
@@ -202,7 +202,7 @@ class UserController(BaseController):
                 obj_in={"status": InvitationStatus.ACCEPTED},
             )
 
-            response = self._serialize_document(user)
+            response = self._serialize_user_document(user)
             response["message"] = "Doctor credentials saved successfully. Verify OTP to continue onboarding."
             return response
         except HTTPException:
@@ -251,7 +251,7 @@ class UserController(BaseController):
                     },
                 },
             )
-            return self._serialize_document(updated_user)
+            return self._serialize_user_document(updated_user)
         except HTTPException:
             raise
         except Exception as error:
@@ -331,7 +331,7 @@ class UserController(BaseController):
                     }
                 )
 
-            return self._serialize_document(updated_user)
+            return self._serialize_user_document(updated_user)
         except HTTPException:
             raise
         except Exception as error:
@@ -364,7 +364,7 @@ class UserController(BaseController):
                     detail="User not found",
                 )
 
-            return self._serialize_document(user)
+            return self._serialize_user_document(user)
         except HTTPException:
             raise
         except Exception as error:
@@ -384,7 +384,7 @@ class UserController(BaseController):
         try:
             logging.info("Executing UserController.list_doctors")
             doctors = await self.crud_user.get_doctors()
-            return {"items": self._serialize_documents(doctors)}
+            return {"items": self._serialize_user_documents(doctors)}
         except Exception as error:
             logging.error(f"Error in UserController.list_doctors: {error}")
             raise HTTPException(
@@ -402,7 +402,7 @@ class UserController(BaseController):
         try:
             logging.info("Executing UserController.list_patients")
             patients = await self.crud_user.get_patients()
-            return {"items": self._serialize_documents(patients)}
+            return {"items": self._serialize_user_documents(patients)}
         except Exception as error:
             logging.error(f"Error in UserController.list_patients: {error}")
             raise HTTPException(
@@ -666,7 +666,7 @@ class UserController(BaseController):
                 id=doctor_id,
                 obj_in={"doctor_status": DoctorStatus.SUSPENDED},
             )
-            return self._serialize_document(updated_doctor)
+            return self._serialize_user_document(updated_doctor)
         except HTTPException:
             raise
         except Exception as error:
@@ -675,3 +675,34 @@ class UserController(BaseController):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
             )
+
+    def _serialize_user_document(self, user) -> dict:
+        """Serialize a user record and normalize doctor-only list fields.
+
+        Doctor onboarding returns partially completed accounts before profile
+        setup finishes, so list-shaped doctor fields are normalized for stable
+        API responses during that intermediate state.
+
+        Args:
+            user: Persisted user model instance to serialize.
+
+        Returns:
+            dict: Response-safe user payload with doctor list fields normalized.
+        """
+
+        payload = self._serialize_document(user)
+        if payload.get("role") == UserRole.DOCTOR and payload.get("services") is None:
+            payload["services"] = []
+        return payload
+
+    def _serialize_user_documents(self, users: list) -> list[dict]:
+        """Serialize multiple user records with doctor field normalization.
+
+        Args:
+            users: Sequence of persisted user models.
+
+        Returns:
+            list[dict]: Response-safe serialized user payloads.
+        """
+
+        return [self._serialize_user_document(user) for user in users]

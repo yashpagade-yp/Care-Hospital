@@ -115,24 +115,33 @@ class DashboardController(BaseController):
 
             appointments = await self.crud_appointment.get_by_doctor_id(doctor_id=doctor_id)
             now = self._utc_now()
+            patient_lookup = await self._build_user_lookup(
+                user_ids=[
+                    appointment.patient_id
+                    for appointment in appointments
+                    if appointment.patient_name is None or appointment.patient_phone is None
+                ]
+            )
             return {
                 "profile": self._serialize_document(doctor),
-                "upcoming_appointments": self._serialize_documents(
-                    [
-                        appointment
-                        for appointment in appointments
-                        if self._normalize_datetime(appointment.date_time) >= now
-                        and appointment.status == AppointmentStatus.CONFIRMED
-                    ]
-                ),
-                "appointment_history": self._serialize_documents(
-                    [
-                        appointment
-                        for appointment in appointments
-                        if self._normalize_datetime(appointment.date_time) < now
-                        or appointment.status != AppointmentStatus.CONFIRMED
-                    ]
-                ),
+                "upcoming_appointments": [
+                    self._serialize_appointment_for_doctor(
+                        appointment=appointment,
+                        patient_lookup=patient_lookup,
+                    )
+                    for appointment in appointments
+                    if self._normalize_datetime(appointment.date_time) >= now
+                    and appointment.status == AppointmentStatus.CONFIRMED
+                ],
+                "appointment_history": [
+                    self._serialize_appointment_for_doctor(
+                        appointment=appointment,
+                        patient_lookup=patient_lookup,
+                    )
+                    for appointment in appointments
+                    if self._normalize_datetime(appointment.date_time) < now
+                    or appointment.status != AppointmentStatus.CONFIRMED
+                ],
             }
         except HTTPException:
             raise
@@ -180,6 +189,7 @@ class DashboardController(BaseController):
             return {
                 "profile": self._serialize_document(admin),
                 "doctor_count": await self.crud_user.count(self.crud_user.model.role == UserRole.DOCTOR),
+                "patient_count": await self.crud_user.count(self.crud_user.model.role == UserRole.PATIENT),
                 "invitation_count": await self.crud_invitation.count(),
                 "appointment_count": await self.crud_appointment.count(),
                 "recent_invitations": self._serialize_documents(recent_invitations),
@@ -213,3 +223,39 @@ class DashboardController(BaseController):
             doctor_id: round(sum(ratings) / len(ratings), 1)
             for doctor_id, ratings in doctor_review_map.items()
         }
+
+    async def _build_user_lookup(self, *, user_ids: list[str]) -> dict[str, object]:
+        """Build a lookup for patient fallback values in doctor dashboard cards.
+
+        Args:
+            user_ids: Patient identifiers referenced by doctor appointments.
+
+        Returns:
+            dict[str, object]: Mapping of user id to user record.
+        """
+
+        lookup: dict[str, object] = {}
+        for user_id in set(user_ids):
+            user = await self.crud_user.get_by_id(id=user_id)
+            if user is not None:
+                lookup[user_id] = user
+        return lookup
+
+    def _serialize_appointment_for_doctor(self, *, appointment, patient_lookup: dict[str, object]) -> dict:
+        """Serialize doctor appointments with patient display context.
+
+        Args:
+            appointment: Appointment record being serialized.
+            patient_lookup: Mapping of patient id to patient record.
+
+        Returns:
+            dict: Serialized appointment payload for doctor workspace views.
+        """
+
+        payload = self._serialize_document(appointment)
+        patient = patient_lookup.get(appointment.patient_id)
+        if not payload.get("patient_name") and patient is not None:
+            payload["patient_name"] = patient.name
+        if not payload.get("patient_phone") and patient is not None:
+            payload["patient_phone"] = patient.phone
+        return payload

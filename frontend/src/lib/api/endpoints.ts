@@ -4,6 +4,7 @@ import type {
   Appointment,
   AppointmentConfirmation,
   AppointmentReschedule,
+  BookedSlotList,
   DoctorAvailability,
   DoctorDashboard,
   DoctorInvitation,
@@ -156,6 +157,9 @@ export const appointmentApi = {
     slot_hold_id: string;
     patient_name: string;
     patient_phone: string;
+    patient_age: number;
+    patient_gender: string;
+    patient_blood_group?: string;
     reason?: string;
     fee: number;
   }) =>
@@ -185,6 +189,10 @@ export const appointmentApi = {
     apiRequest<ListResponse<Appointment>>(`/v1/patients/${patientId}/appointments`),
   listDoctorAppointments: (doctorId: string) =>
     apiRequest<ListResponse<Appointment>>(`/v1/doctors/${doctorId}/appointments`),
+  listDoctorBookedSlots: (doctorId: string) =>
+    apiRequest<BookedSlotList>(`/v1/doctors/${doctorId}/booked-slots`),
+  listAdminAppointments: () =>
+    apiRequest<ListResponse<Appointment>>("/v1/admin/appointments"),
   getAppointmentDetail: (appointmentId: string) =>
     apiRequest<{ appointment: Appointment; patient_name?: string | null; doctor_name?: string | null }>(
       `/v1/appointments/${appointmentId}`,
