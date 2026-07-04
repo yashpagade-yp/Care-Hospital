@@ -7,10 +7,8 @@ type SiteHeaderProps = {
 };
 
 const navItems = [
-  { to: "/", label: "Care" },
-  { to: "/patient/register", label: "Patient Registration" },
-  { to: "/doctor/invite", label: "Doctor Onboarding" },
-  { to: "/login", label: "Shared Login" },
+  { to: "/login", label: "Login" },
+  { to: "/patient/register", label: "Registration" },
 ];
 
 export function SiteHeader({ isMarketingRoute }: SiteHeaderProps) {
@@ -43,6 +41,7 @@ export function SiteHeader({ isMarketingRoute }: SiteHeaderProps) {
         </nav>
 
         <div className="site-header__cta">
+          <span className="site-header__helpline">24/7 Helpline: +91 1800 300 9111</span>
           {isAuthenticated && session ? (
             <>
               <Link to={workspacePath} className="button button--primary button--compact">
@@ -57,8 +56,8 @@ export function SiteHeader({ isMarketingRoute }: SiteHeaderProps) {
               </button>
             </>
           ) : (
-            <Link to="/patient/book" className="button button--primary button--compact">
-              Request appointment
+            <Link to="/patient/register" className="button button--primary button--compact">
+              Registration
             </Link>
           )}
         </div>

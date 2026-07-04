@@ -1,4 +1,5 @@
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
+import { PrescriptionSheet } from "@/components/ui/PrescriptionSheet";
 import { PATIENT_NAV } from "./PatientDashboardPage";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatusBanner } from "@/components/ui/StatusBanner";
@@ -6,6 +7,9 @@ import { useAppSession } from "@/features/auth/session/AppSessionProvider";
 import { loadPrescriptionsForPatient } from "@/features/shared/resource-loaders";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { formatDateTime } from "@/lib/utils/format";
+
+const HOSPITAL_NAME = "MedCare Hospital";
+const HOSPITAL_ADDRESS = "24 Green Avenue, Lakeview Road, Bengaluru 560048";
 
 export function PatientPrescriptionsPage() {
   const { session } = useAppSession();
@@ -29,18 +33,21 @@ export function PatientPrescriptionsPage() {
         ) : data.length ? (
           <div className="stack-list">
             {data.map((prescription) => (
-              <article key={prescription.id} className="stack-list__item stack-list__item--block">
-                <div>
-                  <h3>Appointment {prescription.appointment_id}</h3>
-                  <p>Updated {formatDateTime(prescription.updated_at)}</p>
-                </div>
-                <ul className="chip-row">
-                  {prescription.medicines.map((medicine) => (
-                    <li key={medicine} className="chip">{medicine}</li>
-                  ))}
-                </ul>
-                <p>{prescription.notes ?? "No additional notes."}</p>
-              </article>
+              <PrescriptionSheet
+                key={prescription.id}
+                hospitalName={HOSPITAL_NAME}
+                hospitalAddress={HOSPITAL_ADDRESS}
+                doctorName={prescription.doctor_name ?? "Doctor"}
+                patientName={prescription.patient_name ?? session?.user.name ?? "Patient"}
+                patientPhone={prescription.patient_phone}
+                patientAge={prescription.patient_age}
+                patientGender={prescription.patient_gender}
+                patientBloodGroup={prescription.patient_blood_group}
+                visitReason={prescription.visit_reason}
+                medicines={prescription.medicines}
+                notes={prescription.notes}
+                issuedAt={formatDateTime(prescription.updated_at)}
+              />
             ))}
           </div>
         ) : (

@@ -8,7 +8,7 @@ import { AdminAppointmentsPage } from "@/features/dashboard/pages/AdminAppointme
 import { AdminDoctorsPage } from "@/features/dashboard/pages/AdminDoctorsPage";
 import { AdminInvitationsPage } from "@/features/dashboard/pages/AdminInvitationsPage";
 import { AdminOverridesPage } from "@/features/dashboard/pages/AdminOverridesPage";
-import { AdminReviewsPage } from "@/features/dashboard/pages/AdminReviewsPage";
+import { AdminPatientsPage } from "@/features/dashboard/pages/AdminPatientsPage";
 import { DoctorDashboardPage } from "@/features/dashboard/pages/DoctorDashboardPage";
 import { DoctorAppointmentsPage } from "@/features/dashboard/pages/DoctorAppointmentsPage";
 import { DoctorAvailabilityPage } from "@/features/dashboard/pages/DoctorAvailabilityPage";
@@ -82,8 +82,8 @@ export const router = createBrowserRouter([
           { path: "admin/dashboard", element: <AdminDashboardPage /> },
           { path: "admin/invitations", element: <AdminInvitationsPage /> },
           { path: "admin/doctors", element: <AdminDoctorsPage /> },
+          { path: "admin/patients", element: <AdminPatientsPage /> },
           { path: "admin/appointments", element: <AdminAppointmentsPage /> },
-          { path: "admin/reviews", element: <AdminReviewsPage /> },
           { path: "admin/overrides", element: <AdminOverridesPage /> },
         ],
       },

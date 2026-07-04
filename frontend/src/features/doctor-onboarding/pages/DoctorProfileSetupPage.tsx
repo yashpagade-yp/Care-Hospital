@@ -9,12 +9,6 @@ import {
 } from "@/features/auth/storage";
 import { userApi } from "@/lib/api/endpoints";
 
-type WorkingSlot = {
-  day_of_week: string;
-  start_time: string;
-  end_time: string;
-};
-
 export function DoctorProfileSetupPage() {
   const navigate = useNavigate();
   const pendingDoctor = getPendingDoctorFlow();
@@ -22,58 +16,53 @@ export function DoctorProfileSetupPage() {
   const [name, setName] = useState("");
   const [qualification, setQualification] = useState("");
   const [specialty, setSpecialty] = useState("");
-  const [experienceYears, setExperienceYears] = useState(0);
+  const [experienceYears, setExperienceYears] = useState("0");
   const [services, setServices] = useState("General consultation, Preventive care");
   const [message, setMessage] = useState("");
-  const [slots, setSlots] = useState<WorkingSlot[]>([
-    { day_of_week: "MONDAY", start_time: "09:00", end_time: "13:00" },
-    { day_of_week: "WEDNESDAY", start_time: "14:00", end_time: "18:00" },
-  ]);
-
-  function updateSlot(index: number, field: keyof WorkingSlot, value: string) {
-    setSlots((current) =>
-      current.map((slot, slotIndex) =>
-        slotIndex === index ? { ...slot, [field]: value } : slot,
-      ),
-    );
-  }
-
-  function addSlot() {
-    setSlots((current) => [
-      ...current,
-      { day_of_week: "FRIDAY", start_time: "09:00", end_time: "12:00" },
-    ]);
-  }
+  const [error, setError] = useState("");
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
+    setError("");
 
     startTransition(async () => {
+      if (!pendingDoctor.email) {
+        setError("Doctor email is missing. Please restart the invitation flow.");
+        return;
+      }
+
+      const parsedExperienceYears = Number(experienceYears);
+      if (!Number.isInteger(parsedExperienceYears) || parsedExperienceYears < 0) {
+        setError("Experience must be a valid non-negative number.");
+        return;
+      }
+
       try {
         await userApi.completeDoctorProfile({
           name,
-          email: pendingDoctor.email ?? "",
+          email: pendingDoctor.email,
           qualification,
           specialty,
-          experience_years: Number(experienceYears),
+          experience_years: parsedExperienceYears,
           services: services
             .split(",")
             .map((item) => item.trim())
             .filter(Boolean),
-          working_slots: slots.map((slot) => ({
-            ...slot,
-            start_time: `${slot.start_time}:00`,
-            end_time: `${slot.end_time}:00`,
-          })),
+          working_slots: [],
         });
-      } catch {
-        // Demo-safe completion.
+        clearPendingDoctorFlow();
+        setMessage("Doctor onboarding is complete. Sign in to access the doctor workspace.");
+        navigate("/login");
+      } catch (apiError) {
+        setError(
+          apiError instanceof Error
+            ? apiError.message
+            : typeof apiError === "object" && apiError && "message" in apiError
+              ? String(apiError.message)
+              : "We could not save the doctor profile. Please review the details and try again.",
+        );
       }
-
-      clearPendingDoctorFlow();
-      setMessage("Doctor onboarding is complete. Sign in to access the doctor workspace.");
-      navigate("/login");
     });
   }
 
@@ -110,8 +99,10 @@ export function DoctorProfileSetupPage() {
           <FormField
             label="Years of experience"
             type="number"
-            value={String(experienceYears)}
-            onChange={(event) => setExperienceYears(Number(event.target.value))}
+            min="0"
+            step="1"
+            value={experienceYears}
+            onChange={(event) => setExperienceYears(event.target.value)}
             required
           />
           <FormField
@@ -122,40 +113,9 @@ export function DoctorProfileSetupPage() {
             required
           />
 
-          <div className="form-section form-actions--full">
-            <div className="form-section__header">
-              <h2>Working slots</h2>
-              <button type="button" className="button button--ghost" onClick={addSlot}>
-                Add slot
-              </button>
-            </div>
-            <div className="slot-grid">
-              {slots.map((slot, index) => (
-                <div key={`${slot.day_of_week}-${index}`} className="slot-card">
-                  <FormField
-                    label="Day"
-                    value={slot.day_of_week}
-                    onChange={(event) => updateSlot(index, "day_of_week", event.target.value)}
-                  />
-                  <FormField
-                    label="Start"
-                    type="time"
-                    value={slot.start_time}
-                    onChange={(event) => updateSlot(index, "start_time", event.target.value)}
-                  />
-                  <FormField
-                    label="End"
-                    type="time"
-                    value={slot.end_time}
-                    onChange={(event) => updateSlot(index, "end_time", event.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="form-actions form-actions--full">
             {message ? <StatusBanner tone="success">{message}</StatusBanner> : null}
+            {error ? <StatusBanner tone="error">{error}</StatusBanner> : null}
             <button type="submit" className="button button--primary" disabled={isPending}>
               {isPending ? "Saving profile..." : "Complete onboarding"}
             </button>

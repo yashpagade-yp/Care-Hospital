@@ -31,6 +31,21 @@ class ConfirmAppointmentRequest(BaseModel):
         max_length=20,
         description="Patient phone number confirmed for the booking",
     )
+    patient_age: int = Field(
+        ...,
+        ge=0,
+        le=120,
+        description="Patient age confirmed for the booking",
+    )
+    patient_gender: str = Field(
+        ...,
+        min_length=1,
+        description="Patient gender confirmed for the booking",
+    )
+    patient_blood_group: Optional[str] = Field(
+        default=None,
+        description="Optional patient blood group confirmed for the booking",
+    )
     reason: Optional[str] = Field(
         default=None,
         description="Optional reason for the consultation or visit",

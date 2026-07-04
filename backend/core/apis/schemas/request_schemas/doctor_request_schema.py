@@ -1,8 +1,9 @@
 """Doctor request schemas for the MedCare API layer."""
 
 from datetime import time
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from backend.core.models.DoctorAvailability import DayOfWeek
 
@@ -69,6 +70,34 @@ class DoctorCompleteProfileRequest(BaseModel):
         default_factory=list,
         description="Initial recurring working slots defined during doctor onboarding",
     )
+
+    @field_validator("services", mode="before")
+    @classmethod
+    def normalize_services(cls, value: Any) -> list[str]:
+        """Normalize doctor services into a clean string list.
+
+        Accepts missing values and comma-separated text so onboarding can
+        recover gracefully from lightweight frontend payload variations.
+        """
+
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("working_slots", mode="before")
+    @classmethod
+    def normalize_working_slots(cls, value: Any) -> list[dict[str, Any]]:
+        """Normalize working-slot payloads before nested validation.
+
+        Treats omitted or null slot collections as an empty list so doctors can
+        complete onboarding even when no initial slots are submitted.
+        """
+
+        if value is None:
+            return []
+        return value
 
     model_config = ConfigDict(extra="forbid")
 

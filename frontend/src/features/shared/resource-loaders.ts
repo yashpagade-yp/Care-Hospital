@@ -94,7 +94,12 @@ export async function loadDoctorAppointments(doctorId: string) {
 }
 
 export async function loadAdminAppointments() {
-  return appointments;
+  try {
+    const response = await appointmentApi.listAdminAppointments();
+    return response.items;
+  } catch {
+    return appointments;
+  }
 }
 
 export async function loadPrescriptionsForPatient(patientId: string) {

@@ -8,6 +8,7 @@ from backend.commons.logger import logger
 from backend.core.controllers.base_controller import BaseController
 from backend.core.cruds.appointment_crud import CRUDAppointment
 from backend.core.cruds.prescription_crud import CRUDPrescription
+from backend.core.cruds.user_crud import CRUDUser
 from backend.core.models.Appointment import AppointmentStatus
 from backend.core.models.user_model import UserRole
 
@@ -22,6 +23,7 @@ class PrescriptionController(BaseController):
 
         self.crud_prescription = CRUDPrescription()
         self.crud_appointment = CRUDAppointment()
+        self.crud_user = CRUDUser()
 
     async def create_prescription(self, doctor_id: str, prescription_data: dict) -> dict:
         """Create a prescription for a completed appointment.
@@ -84,11 +86,17 @@ class PrescriptionController(BaseController):
                     "appointment_id": prescription_data["appointment_id"],
                     "doctor_id": doctor_id,
                     "patient_id": appointment.patient_id,
+                    "patient_name": appointment.patient_name,
+                    "patient_phone": appointment.patient_phone,
+                    "patient_age": appointment.patient_age,
+                    "patient_gender": appointment.patient_gender,
+                    "patient_blood_group": appointment.patient_blood_group,
+                    "visit_reason": appointment.reason,
                     "medicines": prescription_data.get("medicines", []),
                     "notes": prescription_data.get("notes"),
                 }
             )
-            return self._serialize_document(prescription)
+            return await self._serialize_prescription(prescription=prescription)
         except HTTPException:
             raise
         except Exception as error:
@@ -139,7 +147,7 @@ class PrescriptionController(BaseController):
                 id=prescription_id,
                 obj_in=update_data,
             )
-            return self._serialize_document(updated_prescription)
+            return await self._serialize_prescription(prescription=updated_prescription)
         except HTTPException:
             raise
         except Exception as error:
@@ -214,7 +222,7 @@ class PrescriptionController(BaseController):
                     detail="Prescription not found",
                 )
 
-            return self._serialize_document(prescription)
+            return await self._serialize_prescription(prescription=prescription)
         except HTTPException:
             raise
         except Exception as error:
@@ -237,7 +245,10 @@ class PrescriptionController(BaseController):
         try:
             logging.info("Executing PrescriptionController.list_prescriptions_for_patient")
             prescriptions = await self.crud_prescription.get_by_patient_id(patient_id=patient_id)
-            return {"items": self._serialize_documents(prescriptions)}
+            items = []
+            for prescription in prescriptions:
+                items.append(await self._serialize_prescription(prescription=prescription))
+            return {"items": items}
         except Exception as error:
             logging.error(f"Error in PrescriptionController.list_prescriptions_for_patient: {error}")
             raise HTTPException(
@@ -258,10 +269,36 @@ class PrescriptionController(BaseController):
         try:
             logging.info("Executing PrescriptionController.list_prescriptions_for_doctor")
             prescriptions = await self.crud_prescription.get_by_doctor_id(doctor_id=doctor_id)
-            return {"items": self._serialize_documents(prescriptions)}
+            items = []
+            for prescription in prescriptions:
+                items.append(await self._serialize_prescription(prescription=prescription))
+            return {"items": items}
         except Exception as error:
             logging.error(f"Error in PrescriptionController.list_prescriptions_for_doctor: {error}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
             )
+
+    async def _serialize_prescription(self, *, prescription) -> dict:
+        """Serialize a prescription with patient fallback values for legacy data.
+
+        Args:
+            prescription: Prescription record being serialized.
+
+        Returns:
+            dict: Serialized prescription payload enriched for UI rendering.
+        """
+
+        payload = self._serialize_document(prescription)
+        if payload.get("patient_name") and payload.get("patient_phone") and payload.get("doctor_name"):
+            return payload
+
+        patient = await self.crud_user.get_by_id(id=prescription.patient_id)
+        doctor = await self.crud_user.get_by_id(id=prescription.doctor_id)
+        if patient is not None:
+            payload["patient_name"] = payload.get("patient_name") or patient.name
+            payload["patient_phone"] = payload.get("patient_phone") or patient.phone
+        if doctor is not None:
+            payload["doctor_name"] = payload.get("doctor_name") or doctor.name
+        return payload

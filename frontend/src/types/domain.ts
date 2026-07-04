@@ -80,13 +80,19 @@ export type AppointmentListItem = {
   id: string;
   patient_id: string;
   doctor_id: string;
+  doctor_name?: string | null;
+  patient_name?: string | null;
+  patient_phone?: string | null;
+  patient_age?: number | null;
+  patient_gender?: string | null;
+  patient_blood_group?: string | null;
+  reason?: string | null;
   date_time: string;
   status: AppointmentStatus;
   fee: number;
 };
 
 export type Appointment = AppointmentListItem & {
-  reason?: string | null;
   payment_status: PaymentStatus;
   cancelled_by?: CancelledBy | null;
   cancel_reason?: string | null;
@@ -116,11 +122,22 @@ export type AppointmentReschedule = {
   new_appointment: Appointment;
 };
 
+export type BookedSlotList = {
+  items: string[];
+};
+
 export type Prescription = {
   id: string;
   appointment_id: string;
   doctor_id: string;
+  doctor_name?: string | null;
   patient_id: string;
+  patient_name?: string | null;
+  patient_phone?: string | null;
+  patient_age?: number | null;
+  patient_gender?: string | null;
+  patient_blood_group?: string | null;
+  visit_reason?: string | null;
   medicines: string[];
   notes?: string | null;
   created_at: string;
@@ -174,6 +191,7 @@ export type DoctorDashboard = {
 export type AdminDashboard = {
   profile: AdminProfile;
   doctor_count: number;
+  patient_count: number;
   invitation_count: number;
   appointment_count: number;
   recent_invitations: DoctorInvitation[];

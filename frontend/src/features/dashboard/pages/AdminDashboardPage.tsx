@@ -15,10 +15,10 @@ const ADMIN_NAV = [
   {
     title: "Workspace",
     links: [
-      { label: "Doctors & Patients", to: "/admin/doctors" },
+      { label: "Doctors", to: "/admin/doctors" },
+      { label: "Patients", to: "/admin/patients" },
       { label: "All Appointments", to: "/admin/appointments" },
       { label: "Availability Overrides", to: "/admin/overrides" },
-      { label: "Review Moderation", to: "/admin/reviews" },
     ],
   },
 ];
@@ -89,9 +89,9 @@ export function AdminDashboardPage() {
           <span className="ws-stat-card__accent">across all doctors</span>
         </div>
         <div className="ws-stat-card">
-          <span className="ws-stat-card__value">{data?.flagged_reviews?.length ?? "—"}</span>
-          <span className="ws-stat-card__label">Reviews to review</span>
-          <span className="ws-stat-card__accent">flagged for attention</span>
+          <span className="ws-stat-card__value">{data?.patient_count ?? "—"}</span>
+          <span className="ws-stat-card__label">Registered patients</span>
+          <span className="ws-stat-card__accent">receiving care</span>
         </div>
       </div>
 
@@ -168,11 +168,11 @@ export function AdminDashboardPage() {
               <span className="ws-glance-tile__detail">last scheduled</span>
             </div>
             <div className="ws-glance-tile">
-              <span className="ws-glance-tile__label">Flagged reviews</span>
+              <span className="ws-glance-tile__label">Registered patients</span>
               <span className="ws-glance-tile__value">
-                {data?.flagged_reviews?.length ?? "—"}
+                {data?.patient_count ?? "—"}
               </span>
-              <span className="ws-glance-tile__detail">need moderation</span>
+              <span className="ws-glance-tile__detail">currently onboarded</span>
             </div>
           </div>
         </div>
