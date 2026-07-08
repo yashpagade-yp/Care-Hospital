@@ -6,12 +6,13 @@
 It does not replace the hospital backend or frontend.
 It acts as the bridge between:
 - Telegram users
+- Telegram bot communication
 - assistant logic
 - existing hospital backend APIs
 
 ## Main Architecture
 ```text
-Telegram User -> Hospital Agent -> Hospital Backend APIs -> Response -> Telegram
+Telegram User -> Telegram Bot -> Hospital Agent -> Hospital Backend APIs -> Response -> Telegram Bot -> Telegram User
 ```
 
 ## Project Context
@@ -24,9 +25,19 @@ The main hospital project already has:
 
 This folder is only for the missing assistant layer and Telegram integration.
 
+## Telegram Communication Model
+- Telegram communication starts through a Telegram bot created in BotFather.
+- The bot token is the channel credential that allows the hospital agent to receive and send Telegram messages.
+- A Telegram user talks to the bot first, not directly to the backend.
+- The hospital agent receives the Telegram message, understands the request, and decides whether a backend API call is needed.
+- General conversation and hospital FAQ guidance can start from Telegram without immediately performing a protected backend action.
+- Protected actions like booking, rescheduling, cancellation, and patient-specific appointment lookup must still follow backend authentication and verification rules.
+- Telegram access and backend authorization are separate concerns.
+
 ## Responsibilities Of Hospital Agent
 The hospital agent is responsible for:
 - handling Telegram conversations
+- handling Telegram bot message flow
 - understanding patient requests
 - calling approved backend APIs
 - returning simple and safe responses
@@ -79,7 +90,14 @@ Suggested contents:
 - The hospital backend remains the source of truth.
 - All real business actions must go through backend APIs.
 - Telegram should communicate with the hospital agent, not directly with the backend.
+- The Telegram bot token is only for Telegram channel communication, not for backend authorization.
+- The hospital agent may talk with any Telegram user at the conversation layer, but protected patient actions must respect backend auth and verification.
 - The assistant should use only approved tools and flows.
+
+## Current Build Direction
+- For now, this hospital-agent work should avoid Docker-specific setup.
+- Start with a simple non-Docker Telegram bot integration path.
+- Add Docker or deployment-specific packaging only later if actually needed.
 
 ## First Implementation Goal
 The first end-to-end flow should be:
