@@ -13,6 +13,7 @@ The hospital agent must only orchestrate these APIs and must not replace backend
 - Cancel appointment
 - Read doctor list for appointment selection
 - Read patient appointments for follow-up actions
+- Read patient prescriptions through existing backend APIs
 
 ## Telegram And Backend Boundary
 
@@ -246,6 +247,59 @@ References:
 - [appointment_controller.py](/C:/Users/yash/my_hospital/backend/core/controllers/appointment_controller.py:279)
 - [appointment_controller.py](/C:/Users/yash/my_hospital/backend/core/controllers/appointment_controller.py:741)
 
+## Prescription APIs
+
+### List Prescriptions For Patient
+- Method: `GET`
+- Endpoint: `/v1/patients/{patient_id}/prescriptions`
+- Access:
+  - owning `PATIENT` only
+- Use in hospital-agent:
+  - show the patient their existing prescriptions
+  - help the patient select which prescription they want to view
+
+Important backend rule:
+- caller must be the same patient as the route `patient_id`
+
+Reference:
+- [prescription_router.py](/C:/Users/yash/my_hospital/backend/core/apis/routers/prescription_router.py:178)
+
+### Get Prescription By Appointment
+- Method: `GET`
+- Endpoint: `/v1/appointments/{appointment_id}/prescription`
+- Access:
+  - related `PATIENT`
+  - related `DOCTOR`
+- Use in hospital-agent:
+  - fetch the prescription tied to a specific appointment
+  - return the prescription if the patient is the owner
+
+Important backend rules:
+- appointment must exist
+- prescription must exist
+- patient can only access their own prescription
+- doctor can only access their own prescription
+
+Reference:
+- [prescription_router.py](/C:/Users/yash/my_hospital/backend/core/apis/routers/prescription_router.py:126)
+
+### Prescription Response Notes
+Important fields:
+- `id`
+- `appointment_id`
+- `doctor_id`
+- `doctor_name`
+- `patient_id`
+- `patient_name`
+- `visit_reason`
+- `medicines`
+- `notes`
+- `created_at`
+- `updated_at`
+
+Reference:
+- [prescription_response_schema.py](/C:/Users/yash/my_hospital/backend/core/apis/schemas/responses_schemas/prescription_response_schema.py:8)
+
 ## Backend Rules The Agent Must Respect
 
 ### Patient Verification
@@ -277,6 +331,15 @@ The agent should only send requested datetime values and let the backend enforce
 
 Reference:
 - [appointment_controller.py](/C:/Users/yash/my_hospital/backend/core/controllers/appointment_controller.py:775)
+
+### Prescription Ownership
+Prescription access is restricted to the related patient or doctor only.
+
+The hospital agent must not bypass this through local memory or SQLite state.
+
+References:
+- [prescription_controller.py](/C:/Users/yash/my_hospital/backend/core/controllers/prescription_controller.py:160)
+- [prescription_router.py](/C:/Users/yash/my_hospital/backend/core/apis/routers/prescription_router.py:126)
 
 ## Recommended V1 Agent Flow
 
@@ -310,6 +373,13 @@ Reference:
 5. send reschedule request
 6. return old/new appointment result
 
+### View Prescription
+1. authenticate patient
+2. list patient prescriptions or identify a related appointment
+3. fetch the prescription through backend API
+4. return patient-visible prescription details
+5. never invent, modify, or prescribe medicines in the agent layer
+
 ## FAQ Note
 No dedicated FAQ backend endpoint was identified in the current backend route layer.
 
@@ -323,3 +393,5 @@ If backend-backed FAQs are needed later, that should be added as a separate back
 - Do not assume Docker-based setup for the current hospital-agent phase.
 - Keep the Telegram integration path simple first.
 - Add deployment packaging concerns later, after the Telegram and backend orchestration flow is stable.
+- SQLite can be used for assistant-side state and bounded memory only.
+- Existing prescription data must be read from backend APIs, not copied into assistant-owned truth storage.

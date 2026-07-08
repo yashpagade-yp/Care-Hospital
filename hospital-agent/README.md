@@ -32,6 +32,7 @@ This folder is only for the missing assistant layer and Telegram integration.
 - The hospital agent receives the Telegram message, understands the request, and decides whether a backend API call is needed.
 - General conversation and hospital FAQ guidance can start from Telegram without immediately performing a protected backend action.
 - Protected actions like booking, rescheduling, cancellation, and patient-specific appointment lookup must still follow backend authentication and verification rules.
+- Existing prescription viewing is allowed only when the backend confirms the patient is authorized to view it.
 - Telegram access and backend authorization are separate concerns.
 
 ## Responsibilities Of Hospital Agent
@@ -62,16 +63,19 @@ The hospital agent must not:
 - Reschedule appointment
 - Cancel appointment
 - Answer hospital FAQs
+- View existing prescriptions that already exist in backend records
 
 ## Not Allowed In V1
 - Diagnosis
-- Prescription decisions
+- Prescription decisions or medicine generation
 - Emergency medical advice
 - Full patient record access without verification
 
 ## Folder Purpose
 This `hospital-agent/` folder contains the assistant-specific work, such as:
 - planning
+- agent loop design
+- short-term memory, long-term memory, and temporary state design
 - prompts
 - Telegram integration
 - backend API wrappers
@@ -86,18 +90,35 @@ Suggested contents:
 - `telegram/`
 - `docs/`
 
+Current structure:
+- `README.md`
+- `plan.md`
+- `.env.example`
+- `agent/`
+- `memory/`
+- `prompts/`
+- `state/`
+- `tools/`
+- `telegram/`
+- `docs/`
+
 ## Integration Rules
 - The hospital backend remains the source of truth.
 - All real business actions must go through backend APIs.
 - Telegram should communicate with the hospital agent, not directly with the backend.
 - The Telegram bot token is only for Telegram channel communication, not for backend authorization.
 - The hospital agent may talk with any Telegram user at the conversation layer, but protected patient actions must respect backend auth and verification.
+- SQLite may be used in hospital-agent for assistant-side memory and state, but not as a replacement for hospital backend records.
 - The assistant should use only approved tools and flows.
 
 ## Current Build Direction
 - For now, this hospital-agent work should avoid Docker-specific setup.
 - Start with a simple non-Docker Telegram bot integration path.
 - Add Docker or deployment-specific packaging only later if actually needed.
+- Keep a separate agent-loop layer so orchestration does not get buried inside Telegram files.
+- Keep both short-term and long-term memory concepts in the assistant layer.
+- Keep durable memory bounded and safe.
+- Keep temporary state separate from memory.
 
 ## First Implementation Goal
 The first end-to-end flow should be:
