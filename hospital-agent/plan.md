@@ -20,6 +20,11 @@ Build a thin assistant layer inside `my_hospital/hospital-agent` that allows a p
 - protected actions must still satisfy backend authentication and patient verification rules
 - start with a simple non-Docker Telegram integration path
 
+## SQLite Decision
+- use SQLite in hospital-agent for bounded memory and temporary session state
+- do not use SQLite as the source of truth for prescriptions, appointments, or medical records
+- prescription lookup must come from existing backend APIs only
+
 ## V1 Users
 - Patient
 
@@ -29,10 +34,11 @@ Build a thin assistant layer inside `my_hospital/hospital-agent` that allows a p
 - Reschedule appointment
 - Cancel appointment
 - Answer hospital FAQs
+- View existing prescriptions already present in backend records
 
 ## Not Allowed In V1
 - Diagnosis
-- Prescription decisions
+- Prescription decisions or medicine generation
 - Emergency medical advice
 - Full patient record access without verification
 
@@ -41,25 +47,48 @@ Build a thin assistant layer inside `my_hospital/hospital-agent` that allows a p
 - Never provide unsafe emergency advice
 - Never expose sensitive patient data without verification
 - Never bypass backend auth or business rules
+- Never generate or alter prescription decisions in the assistant layer
 - Stop or escalate when a request is outside allowed scope
+
+## Memory Model Decision
+- short-term memory should exist for recent conversational continuity
+- long-term memory should exist for bounded durable assistant context
+- SQLite should support short-term memory and temporary state
+- long-term memory must stay compact and safe
 
 ## Initial Folder Plan
 - `README.md`
 - `plan.md`
 - `.env.example`
+- `agent/`
+- `memory/`
 - `prompts/`
+- `state/`
 - `tools/`
 - `telegram/`
 - `docs/`
+
+## Folder Structure Status
+- `README.md` created
+- `plan.md` created
+- `.env.example` created
+- `agent/` created
+- `memory/` created
+- `prompts/` created
+- `state/` created
+- `tools/` created
+- `telegram/` created
+- `docs/` created
 
 ## Implementation Sequence
 1. Finalize hospital-agent purpose, scope, and safety boundaries
 2. Map the backend APIs needed for V1 appointment flows
 3. Define Telegram communication boundaries and patient-safe action rules
 4. Define the hospital-agent folder structure
-5. Add Telegram integration entry point
-6. Add backend API wrapper tools
-7. Test one thin end-to-end vertical slice
+5. Define the core agent loop, bounded memory, and temporary state model
+6. Add Telegram integration entry point
+7. Add backend API wrapper tools
+8. Test one thin end-to-end vertical slice
 
 ## Backend APIs Needed First
 - doctor availability API
@@ -108,6 +137,9 @@ These points are carried forward from `hospital-agent_plan.md` because they defi
 - Stay role-aware and scope-aware
 - Escalate or stop for risky requests
 - allow simple hospital conversation without bypassing protected backend actions
+- use temporary state for in-progress flows
+- use short-term memory for recent flow continuity
+- use long-term memory for safe durable context
 
 ## Reference Guidance
 - Use Hermes and OpenClaw only for ideas and patterns
