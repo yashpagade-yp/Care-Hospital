@@ -63,7 +63,7 @@ A three-role (Admin, Doctor, Patient) web platform for hospital/clinic managemen
   - Access patient-doctor mapping for operational purposes such as scheduling and billing
 - **Restricted clinical data access**
   - By default, admin does not see prescriptions or medical notes
-  - Super-admin access is optional and not required for Phase 1 single-admin setup
+  - There is no separate super-admin role in Phase 1
 
 ---
 
@@ -108,14 +108,14 @@ A three-role (Admin, Doctor, Patient) web platform for hospital/clinic managemen
 
 ## 3. Access Control Matrix (Summary)
 
-| Data / Action | Patient | Doctor | Admin | Super-Admin |
-|---|---|---|---|---|
-| Own profile/appointments | Full access | Full access (own) | View (operational) | Full |
-| Other patients' records | No access | No access | No access | Logged access |
-| Prescriptions/medical notes | Own only | Own patients only | No access (default) | Logged access |
-| Doctor availability | View only | Set/edit own | View + override | Full |
-| Doctor invitation management | No access | No access | Full | Full |
-| Appointment scheduling overview | Own only | Own only | All (operational) | Full |
+| Data / Action | Patient | Doctor | Admin |
+|---|---|---|---|
+| Own profile/appointments | Full access | Full access (own) | View (operational) |
+| Other patients' records | No access | No access | No access |
+| Prescriptions/medical notes | Own only | Own patients only | No access |
+| Doctor availability | View only | Set/edit own | View + override |
+| Doctor invitation management | No access | No access | Full |
+| Appointment scheduling overview | Own only | Own only | All (operational) |
 
 ---
 
@@ -131,7 +131,7 @@ A three-role (Admin, Doctor, Patient) web platform for hospital/clinic managemen
 ## 5. Security & Compliance Notes
 - Role-based + relationship-based access control (not flat admin-sees-all)
 - Encrypt sensitive medical data at rest
-- Audit logs for: admin overrides, super-admin clinical data access, invite resend/revoke actions
+- Audit logs for: admin overrides, invite resend/revoke actions
 - OTP verification for doctor onboarding identity check
 - Standard auth security: no confirmation/denial of whether an email is registered during password reset
 
@@ -139,7 +139,7 @@ A three-role (Admin, Doctor, Patient) web platform for hospital/clinic managemen
 
 ## 6. Core Modules Summary
 1. **Patient Module** — Landing page, auth, doctor discovery, booking, dashboard
-2. **Admin Module** — Doctor invitations, doctor directory, operational appointment overview, optional super-admin clinical access
+2. **Admin Module** — Doctor invitations, doctor directory, and operational appointment overview
 3. **Doctor Module** — Invite acceptance + OTP + registration, dashboard, availability management, patient appointment & prescription handling
 
 ---
@@ -161,7 +161,7 @@ A three-role (Admin, Doctor, Patient) web platform for hospital/clinic managemen
 ---
 
 ## 8. Appointment Lifecycle (State Machine)
-`Pending` (optional, only if manual approval is later added) → `Confirmed` (on successful mock payment) → `Completed` (doctor marks done) / `Cancelled` (by patient or doctor, with cancelledBy + cancelReason) / `No-Show` (doctor marks) / `Rescheduled` (old appointment linked to new appointment id)
+`Pending Payment/Held Slot` → `Confirmed` (on successful mock payment) → `Completed` (doctor marks done) / `Cancelled` (by patient or doctor, with cancelledBy + cancelReason) / `No-Show` (doctor marks) / `Rescheduled` (old appointment linked to new appointment id)
 
 ---
 
