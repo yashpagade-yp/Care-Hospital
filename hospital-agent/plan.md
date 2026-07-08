@@ -95,6 +95,7 @@ Build a thin assistant layer inside `my_hospital/hospital-agent` that allows a p
 - appointment booking API
 - appointment reschedule API
 - appointment cancellation API
+- patient prescription APIs
 
 ## Preserved Initial Notes
 These points are carried forward from `hospital-agent_plan.md` because they define the first backend integration focus for V1:
@@ -140,6 +141,13 @@ These points are carried forward from `hospital-agent_plan.md` because they defi
 - use temporary state for in-progress flows
 - use short-term memory for recent flow continuity
 - use long-term memory for safe durable context
+
+## Current Code Progress
+- Telegram entry flow implemented
+- agent loop implemented in a thin rule-based way
+- backend API wrapper client implemented
+- SQLite state and short-term memory implemented
+- end-to-end live testing still pending
 
 ## Reference Guidance
 - Use Hermes and OpenClaw only for ideas and patterns

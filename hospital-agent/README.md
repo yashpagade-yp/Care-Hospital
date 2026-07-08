@@ -94,6 +94,9 @@ Current structure:
 - `README.md`
 - `plan.md`
 - `.env.example`
+- `main.py`
+- `config.py`
+- `requirements.txt`
 - `agent/`
 - `memory/`
 - `prompts/`
@@ -127,6 +130,27 @@ The first end-to-end flow should be:
 3. Hospital agent checks doctor availability via backend API
 4. Hospital agent books or helps book the appointment
 5. Hospital agent sends confirmation on Telegram
+
+## Current Implementation Status
+- Telegram bot entry code exists
+- backend API client code exists
+- SQLite-backed session and short-term memory code exists
+- agent loop code exists for:
+  - login + OTP verify
+  - doctor listing
+  - availability lookup
+  - appointment listing
+  - booking flow
+  - cancellation flow
+  - reschedule flow
+  - prescription listing and lookup
+  - FAQ fallback
+
+## Run Locally
+1. Create `hospital-agent/.env`
+2. Add the Telegram bot token and backend base URL
+3. Install dependencies from `hospital-agent/requirements.txt`
+4. Run `python hospital-agent/main.py`
 
 ## Development Workflow
 Follow the hospital project Git workflow:

@@ -37,9 +37,10 @@ It is the missing layer between:
 - diagnosis and emergency advice remain out of scope
 - patient-specific actions must respect backend auth and verification
 
-## Planned Contents
-- agent loop implementation
-- intent routing
-- follow-up question handling
-- safety decision checks
-- response assembly
+## Current Contents
+- `intents.py`
+  - lightweight intent detection
+- `loop.py`
+  - Telegram-request orchestration
+  - login and OTP verification flow
+  - booking, cancel, reschedule, prescription, and FAQ handling
