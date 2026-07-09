@@ -392,6 +392,25 @@ class UserController(BaseController):
                 detail="Internal Server Error",
             )
 
+    async def list_public_doctors(self) -> dict:
+        """List public-safe doctor directory entries for anonymous users."""
+
+        try:
+            logging.info("Executing UserController.list_public_doctors")
+            doctors = await self.crud_user.get_doctors()
+            return {
+                "items": [
+                    self._serialize_public_doctor_document(doctor)
+                    for doctor in doctors
+                ]
+            }
+        except Exception as error:
+            logging.error(f"Error in UserController.list_public_doctors: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
+            )
+
     async def list_patients(self) -> dict:
         """List patient accounts for operational views.
 
@@ -409,6 +428,20 @@ class UserController(BaseController):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
             )
+
+    @staticmethod
+    def _serialize_public_doctor_document(user) -> dict:
+        """Serialize a doctor record for public doctor-directory usage."""
+
+        return {
+            "id": str(user.id),
+            "name": user.name,
+            "qualification": getattr(user, "qualification", None),
+            "specialty": getattr(user, "specialty", None),
+            "experience_years": getattr(user, "experience_years", None),
+            "services": list(getattr(user, "services", []) or []),
+            "doctor_status": getattr(user, "doctor_status", None),
+        }
 
     def _issue_otp_payload(self, *, purpose: OtpPurpose) -> tuple[dict, str]:
         """Build a hashed OTP payload and return the plain OTP once for email use.

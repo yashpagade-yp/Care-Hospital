@@ -71,7 +71,7 @@ class HospitalTelegramBot:
             "/prescriptions\n"
             "/prescription <appointment_id>\n"
             "\n"
-            "You can also type: `book appointment`, `cancel appointment`, `reschedule appointment`, or `show my prescription`."
+            "You can also type: `show me doctors`, `doctor working hours`, `book appointment`, `cancel appointment`, `reschedule appointment`, or `show my prescription`."
         )
 
     async def _login(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -23,8 +23,14 @@ class BackendApiClient:
     async def list_doctors(self, access_token: str) -> dict[str, Any]:
         return await self._request("GET", "/v1/doctors", access_token=access_token)
 
+    async def list_public_doctors(self) -> dict[str, Any]:
+        return await self._request("GET", "/v1/public/doctors")
+
     async def get_doctor_availability(self, access_token: str, doctor_id: str) -> Any:
         return await self._request("GET", f"/v1/doctors/{doctor_id}/availability", access_token=access_token)
+
+    async def get_public_doctor_availability(self, doctor_id: str) -> Any:
+        return await self._request("GET", f"/v1/public/doctors/{doctor_id}/availability")
 
     async def get_doctor_booked_slots(self, access_token: str, doctor_id: str) -> Any:
         return await self._request("GET", f"/v1/doctors/{doctor_id}/booked-slots", access_token=access_token)
