@@ -7,7 +7,7 @@ from agent.loop import HospitalAgentLoop
 from config import load_settings
 from memory.long_term import LongTermMemory
 from state.sqlite_store import SQLiteStore
-from telegram.bot_app import HospitalTelegramBot
+from telegram_bot.bot_app import HospitalTelegramBot
 from tools.backend_api import BackendApiClient
 
 
@@ -17,6 +17,8 @@ def main() -> None:
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     store = SQLiteStore(settings.sqlite_path)
     backend_client = BackendApiClient(
         base_url=settings.backend_base_url,

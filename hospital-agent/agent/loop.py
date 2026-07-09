@@ -79,7 +79,7 @@ class HospitalAgentLoop:
 
         response = await self.backend_client.verify_login_otp(email=email, otp=otp)
         user = response.get("user", {})
-        role = response.get("role", "")
+        role = response.get("role") or user.get("role") or ""
         self.store.upsert_auth_session(
             telegram_user_id=telegram_user_id,
             email=email,
@@ -489,13 +489,13 @@ class HospitalAgentLoop:
                 "General hospital enquiries can be asked without login, but for this action please use "
                 "`/login <email> <password>` first."
             )
-        if session.get("role", "").upper() != "PATIENT":
+        if (session.get("role") or "").upper() != "PATIENT":
             raise BackendApiError("Only patient accounts are supported in this hospital-agent V1.")
         return session
 
     def _get_patient_session(self, telegram_user_id: int) -> dict[str, Any]:
         session = self.store.get_auth_session(telegram_user_id)
-        if session and session.get("role", "").upper() == "PATIENT" and session.get("access_token"):
+        if session and (session.get("role") or "").upper() == "PATIENT" and session.get("access_token"):
             return session
         return {}
 
