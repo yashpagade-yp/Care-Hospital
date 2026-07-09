@@ -4,7 +4,7 @@ This model stores the booking relationship between a patient and a doctor,
 including status, payment state, and cancellation or reschedule details.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -26,6 +26,15 @@ class PaymentStatus(str, Enum):
 
     PAID = "PAID"
     REFUNDED = "REFUNDED"
+
+
+class QueueStatus(str, Enum):
+    """Defines where an appointment sits in the doctor's daily queue."""
+
+    WAITING = "WAITING"
+    MISSED = "MISSED"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
 
 
 class CancelledBy(str, Enum):
@@ -74,6 +83,24 @@ class Appointment(Model):
     reason: Optional[str] = Field(
         default=None,
         description="Optional patient-provided reason for the visit",
+    )
+    queue_number: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Patient token number in the doctor's daily queue",
+    )
+    queue_date: Optional[date] = Field(
+        default=None,
+        description="Doctor queue date used to group daily patient tokens",
+    )
+    queue_status: QueueStatus = Field(
+        default=QueueStatus.WAITING,
+        description="Current queue state for this appointment",
+    )
+    missed_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of times the patient missed their queue turn",
     )
     fee: float = Field(..., ge=0, description="Appointment consultation fee")
     payment_status: PaymentStatus = Field(

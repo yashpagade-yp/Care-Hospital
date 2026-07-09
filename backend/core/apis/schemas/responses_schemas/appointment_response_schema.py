@@ -1,10 +1,10 @@
 """Appointment and booking response schemas for the MedCare API layer."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.core.models.Appointment import AppointmentStatus, CancelledBy, PaymentStatus
+from backend.core.models.Appointment import AppointmentStatus, CancelledBy, PaymentStatus, QueueStatus
 from backend.core.apis.schemas.responses_schemas.payment_response_schema import PaymentResponse
 
 
@@ -42,6 +42,13 @@ class AppointmentResponse(BaseModel):
     date_time: datetime = Field(..., description="Scheduled appointment date and time")
     status: AppointmentStatus = Field(..., description="Current appointment status")
     reason: str | None = Field(default=None, description="Optional visit reason")
+    queue_number: int | None = Field(default=None, description="Patient token number in the doctor's queue")
+    queue_date: date | None = Field(default=None, description="Queue date for the doctor's patient line")
+    queue_status: QueueStatus | None = Field(default=None, description="Current queue state for the appointment")
+    missed_count: int = Field(default=0, description="Number of missed queue turns")
+    current_queue_number: int | None = Field(default=None, description="Current token being served for this doctor")
+    patients_before: int | None = Field(default=None, description="Patients still waiting before this appointment")
+    total_waiting: int | None = Field(default=None, description="Total active waiting patients for the doctor queue")
     fee: float = Field(..., description="Consultation fee charged for the appointment")
     payment_status: PaymentStatus = Field(..., description="Payment state for the appointment")
     cancelled_by: CancelledBy | None = Field(
@@ -84,6 +91,13 @@ class AppointmentListItemResponse(BaseModel):
         description="Patient blood group for list views",
     )
     reason: str | None = Field(default=None, description="Optional visit reason")
+    queue_number: int | None = Field(default=None, description="Patient token number in the doctor's queue")
+    queue_date: date | None = Field(default=None, description="Queue date for the doctor's patient line")
+    queue_status: QueueStatus | None = Field(default=None, description="Current queue state for the appointment")
+    missed_count: int = Field(default=0, description="Number of missed queue turns")
+    current_queue_number: int | None = Field(default=None, description="Current token being served for this doctor")
+    patients_before: int | None = Field(default=None, description="Patients still waiting before this appointment")
+    total_waiting: int | None = Field(default=None, description="Total active waiting patients for the doctor queue")
     date_time: datetime = Field(..., description="Scheduled appointment date and time")
     status: AppointmentStatus = Field(..., description="Current appointment status")
     fee: float = Field(..., description="Consultation fee charged for the appointment")
