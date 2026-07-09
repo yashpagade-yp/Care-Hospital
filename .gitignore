@@ -1,13 +1,17 @@
 .env
 .env.*
 !.env.example
+!**/.env.example
 
 venv/
 .venv/
 env/
+**/.venv/
+**/venv/
 
 __pycache__/
 *.py[cod]
+*.pyc
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
@@ -18,10 +22,15 @@ dist/
 build/
 *.egg-info/
 
+node_modules/
+*.tsbuildinfo
+
 logs/
 *.log
 *.sqlite*
 hospital-agent/local/
+hospital-agent/agent.stdout.log
+hospital-agent/agent.stderr.log
 
 .DS_Store
 .idea/
@@ -29,7 +38,3 @@ hospital-agent/local/
 
 .codex/
 .agents/
-venv/
-backend/venv/
-__pycache__/
-*.pyc
