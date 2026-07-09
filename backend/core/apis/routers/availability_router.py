@@ -210,6 +210,37 @@ async def list_doctor_availability(
         )
 
 
+@availability_router.get(
+    "/v1/public/doctors/{doctor_id}/availability",
+    response_model=DoctorAvailabilityListResponse,
+    tags=["Availability"],
+)
+async def list_public_doctor_availability(
+    doctor_id: str,
+):
+    """List public-facing doctor availability entries for anonymous users."""
+
+    try:
+        logging.info(f"Calling GET /v1/public/doctors/{doctor_id}/availability endpoint")
+        response = await AvailabilityController().list_doctor_availability(
+            doctor_id=doctor_id
+        )
+        return build_response(DoctorAvailabilityListResponse, response)
+    except HTTPException as http_error:
+        logging.error(
+            f"Error in GET /v1/public/doctors/{doctor_id}/availability endpoint: {http_error}"
+        )
+        raise http_error
+    except Exception as error:
+        logging.error(
+            f"Error in GET /v1/public/doctors/{doctor_id}/availability endpoint: {error}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
 @availability_router.post(
     "/v1/admin/availability/overrides",
     status_code=status.HTTP_201_CREATED,

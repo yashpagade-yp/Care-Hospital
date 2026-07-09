@@ -72,6 +72,43 @@ class DoctorListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PublicDoctorProfileResponse(BaseModel):
+    """Public-safe doctor profile response payload."""
+
+    id: str = Field(..., description="Unique identifier of the doctor")
+    name: str = Field(..., description="Display name of the doctor")
+    qualification: str | None = Field(
+        default=None,
+        description="Professional qualification of the doctor",
+    )
+    specialty: str | None = Field(default=None, description="Specialty of the doctor")
+    experience_years: int | None = Field(
+        default=None,
+        description="Years of experience for the doctor",
+    )
+    services: list[str] = Field(
+        default_factory=list,
+        description="Public-facing services offered by the doctor",
+    )
+    doctor_status: DoctorStatus | None = Field(
+        default=None,
+        description="Doctor lifecycle status visible to the public",
+    )
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class PublicDoctorListResponse(BaseModel):
+    """Public-safe doctor list response payload."""
+
+    items: list[PublicDoctorProfileResponse] = Field(
+        default_factory=list,
+        description="Collection of public doctor profile records",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PatientListResponse(BaseModel):
     """Patient list response payload."""
 

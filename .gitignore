@@ -21,6 +21,7 @@ build/
 logs/
 *.log
 *.sqlite*
+hospital-agent/local/
 
 .DS_Store
 .idea/

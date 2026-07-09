@@ -39,7 +39,9 @@ class HospitalAgentLoop:
             return reply
 
         intent = await self._detect_intent(message, conversation_history)
-        if intent == Intent.BOOK:
+        if intent == Intent.DOCTOR_INFO:
+            reply = await self.handle_list_doctors(telegram_user_id)
+        elif intent == Intent.BOOK:
             reply = self._start_booking(telegram_user_id)
         elif intent == Intent.AVAILABILITY:
             reply = self._start_availability(telegram_user_id)
@@ -99,8 +101,11 @@ class HospitalAgentLoop:
         return "You have been logged out from the hospital assistant."
 
     async def handle_list_doctors(self, telegram_user_id: int) -> str:
-        auth = self._require_patient_session(telegram_user_id)
-        response = await self.backend_client.list_doctors(auth["access_token"])
+        session = self._get_patient_session(telegram_user_id)
+        if session:
+            response = await self.backend_client.list_doctors(session["access_token"])
+        else:
+            response = await self.backend_client.list_public_doctors()
         items = response.get("items", [])
         if not items:
             return "No doctors found right now."
@@ -110,14 +115,29 @@ class HospitalAgentLoop:
             doctor_id = item.get("id", "-")
             name = item.get("name", "Unknown")
             specialty = item.get("specialty") or "General"
-            lines.append(f"- {name} | {specialty} | id: {doctor_id}")
-        lines.append("Use `/availability <doctor_id>` or type `book appointment` to continue.")
+            qualification = item.get("qualification") or "-"
+            experience = item.get("experience_years")
+            experience_text = f"{experience} yrs" if experience is not None else "-"
+            lines.append(
+                f"- {name} | {specialty} | {qualification} | exp: {experience_text} | id: {doctor_id}"
+            )
+        if session:
+            lines.append("Use `/availability <doctor_id>` or type `book appointment` to continue.")
+        else:
+            lines.append(
+                "Use `/availability <doctor_id>` to check doctor working hours. "
+                "Login is only needed for booking or private patient actions."
+            )
         return "\n".join(lines)
 
     async def handle_availability(self, telegram_user_id: int, doctor_id: str) -> str:
-        auth = self._require_patient_session(telegram_user_id)
-        availability = await self.backend_client.get_doctor_availability(auth["access_token"], doctor_id)
-        booked = await self.backend_client.get_doctor_booked_slots(auth["access_token"], doctor_id)
+        session = self._get_patient_session(telegram_user_id)
+        if session:
+            availability = await self.backend_client.get_doctor_availability(session["access_token"], doctor_id)
+            booked = await self.backend_client.get_doctor_booked_slots(session["access_token"], doctor_id)
+        else:
+            availability = await self.backend_client.get_public_doctor_availability(doctor_id)
+            booked = {"items": []}
         entries = availability.get("items", availability) if isinstance(availability, dict) else availability
         booked_entries = booked.get("items", booked) if isinstance(booked, dict) else booked
         lines = [f"Availability for doctor `{doctor_id}`:"]
@@ -132,12 +152,15 @@ class HospitalAgentLoop:
         else:
             lines.append("- No availability returned.")
 
-        if isinstance(booked_entries, list) and booked_entries:
+        if session and isinstance(booked_entries, list) and booked_entries:
             lines.append("Booked slots:")
             for slot in booked_entries[:10]:
                 lines.append(f"- {slot}")
 
-        lines.append("To book, type `book appointment`.")
+        if session:
+            lines.append("To book, type `book appointment`.")
+        else:
+            lines.append("If you want to book, first log in with `/login <email> <password>`.")
         return "\n".join(lines)
 
     async def handle_appointments(self, telegram_user_id: int) -> str:
@@ -211,17 +234,16 @@ class HospitalAgentLoop:
         return "Booking started. Send the doctor id. You can use `/doctors` first."
 
     def _start_availability(self, telegram_user_id: int) -> str:
-        try:
-            self._require_patient_session(telegram_user_id)
-        except BackendApiError as error:
-            return str(error)
         self.store.set_flow_state(
             telegram_user_id,
             active_intent=Intent.AVAILABILITY.value,
             step="doctor_id",
             payload={},
         )
-        return "Availability lookup started. Send the doctor id."
+        session = self._get_patient_session(telegram_user_id)
+        if session:
+            return "Availability lookup started. Send the doctor id."
+        return "Send the doctor id to check public working hours. You can use `/doctors` first."
 
     async def _start_cancel(self, telegram_user_id: int) -> str:
         try:
@@ -460,7 +482,7 @@ class HospitalAgentLoop:
             return Intent.UNKNOWN
 
     def _require_patient_session(self, telegram_user_id: int) -> dict[str, Any]:
-        session = self.store.get_auth_session(telegram_user_id)
+        session = self._get_patient_session(telegram_user_id)
         if not session or not session.get("access_token"):
             raise BackendApiError(
                 "This action needs a verified patient account. "
@@ -470,6 +492,12 @@ class HospitalAgentLoop:
         if session.get("role", "").upper() != "PATIENT":
             raise BackendApiError("Only patient accounts are supported in this hospital-agent V1.")
         return session
+
+    def _get_patient_session(self, telegram_user_id: int) -> dict[str, Any]:
+        session = self.store.get_auth_session(telegram_user_id)
+        if session and session.get("role", "").upper() == "PATIENT" and session.get("access_token"):
+            return session
+        return {}
 
     def _build_recent_history(self, telegram_user_id: int) -> str:
         items = self.store.get_recent_short_term_memory(telegram_user_id, limit=6)

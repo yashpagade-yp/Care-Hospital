@@ -26,6 +26,7 @@ from backend.core.apis.schemas.responses_schemas.user_response_schema import (
     DoctorProfileResponse,
     PatientListResponse,
     PatientProfileResponse,
+    PublicDoctorListResponse,
 )
 from backend.core.apis.schemas.responses_schemas.common_response_schema import (
     CommonMessageResponse,
@@ -351,6 +352,29 @@ async def list_doctors(
         raise http_error
     except Exception as error:
         logging.error(f"Error in GET /v1/doctors endpoint: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
+
+
+@user_router.get(
+    "/v1/public/doctors",
+    response_model=PublicDoctorListResponse,
+    tags=["Doctors"],
+)
+async def list_public_doctors():
+    """List public-safe doctor directory entries for anonymous users."""
+
+    try:
+        logging.info("Calling GET /v1/public/doctors endpoint")
+        response = await UserController().list_public_doctors()
+        return build_response(PublicDoctorListResponse, response)
+    except HTTPException as http_error:
+        logging.error(f"Error in GET /v1/public/doctors endpoint: {http_error}")
+        raise http_error
+    except Exception as error:
+        logging.error(f"Error in GET /v1/public/doctors endpoint: {error}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal Server Error",
