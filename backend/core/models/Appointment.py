@@ -4,7 +4,7 @@ This model stores the booking relationship between a patient and a doctor,
 including status, payment state, and cancellation or reschedule details.
 """
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -89,7 +89,7 @@ class Appointment(Model):
         ge=1,
         description="Patient token number in the doctor's daily queue",
     )
-    queue_date: Optional[date] = Field(
+    queue_date: Optional[str] = Field(
         default=None,
         description="Doctor queue date used to group daily patient tokens",
     )

@@ -1,6 +1,6 @@
 """Appointment and booking response schemas for the MedCare API layer."""
 
-from datetime import date, datetime
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,7 +43,7 @@ class AppointmentResponse(BaseModel):
     status: AppointmentStatus = Field(..., description="Current appointment status")
     reason: str | None = Field(default=None, description="Optional visit reason")
     queue_number: int | None = Field(default=None, description="Patient token number in the doctor's queue")
-    queue_date: date | None = Field(default=None, description="Queue date for the doctor's patient line")
+    queue_date: str | None = Field(default=None, description="Queue date for the doctor's patient line")
     queue_status: QueueStatus | None = Field(default=None, description="Current queue state for the appointment")
     missed_count: int = Field(default=0, description="Number of missed queue turns")
     current_queue_number: int | None = Field(default=None, description="Current token being served for this doctor")
@@ -92,7 +92,7 @@ class AppointmentListItemResponse(BaseModel):
     )
     reason: str | None = Field(default=None, description="Optional visit reason")
     queue_number: int | None = Field(default=None, description="Patient token number in the doctor's queue")
-    queue_date: date | None = Field(default=None, description="Queue date for the doctor's patient line")
+    queue_date: str | None = Field(default=None, description="Queue date for the doctor's patient line")
     queue_status: QueueStatus | None = Field(default=None, description="Current queue state for the appointment")
     missed_count: int = Field(default=0, description="Number of missed queue turns")
     current_queue_number: int | None = Field(default=None, description="Current token being served for this doctor")

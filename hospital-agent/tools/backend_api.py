@@ -65,6 +65,13 @@ class BackendApiClient:
             json=payload,
         )
 
+    async def create_telegram_guest_appointment(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/v1/public/telegram/appointments",
+            json=payload,
+        )
+
     async def list_patient_appointments(self, access_token: str, patient_id: str) -> dict[str, Any]:
         return await self._request(
             "GET",

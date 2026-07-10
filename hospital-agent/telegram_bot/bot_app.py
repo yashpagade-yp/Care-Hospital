@@ -52,7 +52,7 @@ class HospitalTelegramBot:
             "Hi, I am the hospital assistant for patients.\n"
             "You can ask about hospital information, available doctors, doctor timings, and appointments.\n\n"
             "Try: show doctors, book appointment, show my appointments, or show my prescription.\n"
-            "For booking, I can help existing patients login or new patients register first."
+            "Booking does not need registration. Prescriptions and private history need web app login."
         )
 
     async def _help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -65,7 +65,7 @@ class HospitalTelegramBot:
             "- Cancel appointment\n"
             "- Reschedule appointment\n"
             "- Show my prescription\n\n"
-            "For booking, say `book appointment`. I will ask whether you are an existing or new patient."
+            "For booking, say `book appointment`. I will collect basic details and give a token number."
         )
 
     async def _login(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -136,4 +136,24 @@ class HospitalTelegramBot:
         except Exception as error:  # pragma: no cover - defensive runtime handling
             logger.exception("Unhandled hospital-agent Telegram error: %s", error)
             reply = "Something went wrong in the hospital assistant. Please try again."
-        await update.effective_message.reply_text(reply)
+        for chunk in self._split_message(reply):
+            await update.effective_message.reply_text(chunk)
+
+    @staticmethod
+    def _split_message(message: str, limit: int = 4000) -> list[str]:
+        """Split long replies without exceeding Telegram's message limit."""
+        chunks: list[str] = []
+        remaining = message.strip()
+        while len(remaining) > limit:
+            split_at = remaining.rfind("\n\n", 0, limit + 1)
+            if split_at < 1:
+                split_at = remaining.rfind("\n", 0, limit + 1)
+            if split_at < 1:
+                split_at = remaining.rfind(" ", 0, limit + 1)
+            if split_at < 1:
+                split_at = limit
+            chunks.append(remaining[:split_at].rstrip())
+            remaining = remaining[split_at:].lstrip()
+        if remaining:
+            chunks.append(remaining)
+        return chunks

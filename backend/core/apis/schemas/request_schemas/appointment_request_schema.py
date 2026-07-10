@@ -55,6 +55,27 @@ class ConfirmAppointmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class TelegramGuestAppointmentRequest(BaseModel):
+    """Public Telegram booking payload for lightweight guest appointments."""
+
+    doctor_id: str = Field(..., description="Doctor selected by the Telegram patient")
+    date_time: datetime = Field(..., description="Requested appointment date and time")
+    patient_name: str = Field(..., min_length=2, description="Patient name captured in Telegram")
+    patient_age: int = Field(..., ge=0, le=120, description="Patient age captured in Telegram")
+    patient_gender: str = Field(..., min_length=1, description="Patient gender captured in Telegram")
+    patient_blood_group: Optional[str] = Field(
+        default=None,
+        description="Optional patient blood group captured in Telegram",
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description="Optional reason for the consultation or visit",
+    )
+    fee: float = Field(default=0, ge=0, description="Consultation fee charged during mock payment")
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class CancelAppointmentRequest(BaseModel):
     """Appointment cancellation payload for patients and doctors."""
 
