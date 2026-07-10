@@ -25,9 +25,12 @@ class GroqLlmClient:
             raise LlmClientError("Groq LLM is not configured.")
 
         prompt = (
-            "You are classifying a hospital assistant user message.\n"
+            "You are classifying a patient message for a hospital Telegram assistant.\n"
             "Return only one lowercase label from this list:\n"
-            "book, availability, cancel, reschedule, prescription, faq, unknown.\n"
+            "doctor_info, book, register, appointments, availability, cancel, reschedule, prescription, faq, unknown.\n"
+            "Use doctor_info when the patient asks for available doctors, present doctors, specialties, or doctor list.\n"
+            "Use register when the patient asks to create a patient account, says they are a new user, or asks for patient registration.\n"
+            "Use appointments when the patient asks to see their appointments, appointment history, or appointment status.\n"
             "If the message is about medicines or old prescription access, use prescription.\n"
             "If it is a general hospital enquiry, use faq.\n"
             f"Conversation history:\n{conversation_history or '-'}\n\n"
@@ -54,6 +57,11 @@ class GroqLlmClient:
         system_prompt = (
             "You are a hospital assistant for patients on Telegram.\n"
             "Be simple, safe, and patient-friendly.\n"
+            "This assistant is only for patient conversations. Do not offer admin or doctor login flows.\n"
+            "Do not expose backend IDs, internal fields, commands, schemas, or developer-style instructions unless the user explicitly asks for a technical detail.\n"
+            "Do not tell patients to register before booking in Telegram. Telegram appointment booking is allowed without registration.\n"
+            "For prescriptions, appointment history, or private data, registration/login in the web app is required.\n"
+            "Public doctor lists, specialties, services, and working hours do not require login.\n"
             "You may answer general hospital enquiries and guide the user.\n"
             "Do not diagnose.\n"
             "Do not prescribe or change medicines.\n"

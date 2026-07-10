@@ -13,7 +13,7 @@ from backend.core.cruds.availability_crud import CRUDDoctorAvailability
 from backend.core.cruds.payment_crud import CRUDPayment
 from backend.core.cruds.slot_hold_crud import CRUDSlotHold
 from backend.core.cruds.user_crud import CRUDUser
-from backend.core.models.Appointment import AppointmentStatus, CancelledBy, PaymentStatus
+from backend.core.models.Appointment import AppointmentStatus, CancelledBy, PaymentStatus, QueueStatus
 from backend.core.models.DoctorAvailability import AvailabilityType, DayOfWeek
 from backend.core.models.Payment import PaymentRecordStatus
 from backend.core.models.user_model import DoctorStatus, UserRole
@@ -63,28 +63,6 @@ class AppointmentController(BaseController):
                 date_time=date_time,
                 local_date_time=original_date_time,
             )
-            active_hold = await self.crud_slot_hold.get_active_hold(
-                doctor_id=slot_hold_data["doctor_id"],
-                date_time=date_time,
-            )
-            if active_hold:
-                logging.warning(f"Slot hold blocked because slot is already held for doctor {slot_hold_data['doctor_id']}")
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Selected slot is currently held by another booking attempt",
-                )
-
-            existing_appointment = await self.crud_appointment.get_by_doctor_and_datetime(
-                doctor_id=slot_hold_data["doctor_id"],
-                date_time=date_time,
-            )
-            if existing_appointment:
-                logging.warning(f"Slot hold blocked because appointment already exists for doctor {slot_hold_data['doctor_id']}")
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Selected slot has already been booked",
-                )
-
             slot_hold = await self.crud_slot_hold.create(
                 obj_in={
                     "patient_id": patient_id,
@@ -145,18 +123,12 @@ class AppointmentController(BaseController):
             # an IST/UTC mismatch (e.g. 09:00 IST stored as 03:30 UTC fails the check).
             # The active, unexpired slot hold is the authoritative proof of availability.
 
-            existing_appointment = await self.crud_appointment.get_by_doctor_and_datetime(
-                doctor_id=slot_hold.doctor_id,
-                date_time=self._normalize_datetime(slot_hold.date_time),
-            )
-            if existing_appointment:
-                logging.warning(f"Booking blocked because slot already booked for hold {slot_hold.id}")
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Selected slot has already been booked",
-                )
-
             patient = await self.crud_user.get_by_id(id=patient_id)
+            queue_date = self._queue_date_key(self._normalize_datetime(slot_hold.date_time).date())
+            queue_number = await self._next_queue_number(
+                doctor_id=slot_hold.doctor_id,
+                queue_date=queue_date,
+            )
 
             appointment = await self.crud_appointment.create(
                 obj_in={
@@ -170,6 +142,9 @@ class AppointmentController(BaseController):
                     "date_time": self._normalize_datetime(slot_hold.date_time),
                     "status": AppointmentStatus.CONFIRMED,
                     "reason": confirmation_data.get("reason"),
+                    "queue_number": queue_number,
+                    "queue_date": queue_date,
+                    "queue_status": QueueStatus.WAITING,
                     "fee": confirmation_data["fee"],
                     "payment_status": PaymentStatus.PAID,
                 }
@@ -185,7 +160,7 @@ class AppointmentController(BaseController):
 
             doctor = await self.crud_user.get_by_id(id=slot_hold.doctor_id)
             return {
-                "appointment": self._serialize_appointment(
+                "appointment": await self._serialize_appointment_with_queue(
                     appointment=appointment,
                     fallback_doctor_name=doctor.name if doctor else None,
                     fallback_patient_name=confirmation_data["patient_name"],
@@ -199,6 +174,71 @@ class AppointmentController(BaseController):
             raise
         except Exception as error:
             logging.error(f"Error in AppointmentController.confirm_appointment: {error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error",
+            )
+
+    async def create_telegram_guest_appointment(self, booking_data: dict) -> dict:
+        """Create a lightweight Telegram appointment without web-app registration."""
+
+        try:
+            logging.info("Executing AppointmentController.create_telegram_guest_appointment")
+            await self._assert_active_doctor(doctor_id=booking_data["doctor_id"])
+            date_time = self._normalize_datetime(booking_data["date_time"])
+            self._ensure_future_datetime(date_time=date_time)
+            await self._ensure_slot_available(
+                doctor_id=booking_data["doctor_id"],
+                date_time=date_time,
+                local_date_time=booking_data["date_time"],
+            )
+
+            queue_date = self._queue_date_key(date_time.date())
+            queue_number = await self._next_queue_number(
+                doctor_id=booking_data["doctor_id"],
+                queue_date=queue_date,
+            )
+            guest_patient_id = f"telegram-guest:{queue_date}:{booking_data['doctor_id']}"
+            appointment = await self.crud_appointment.create(
+                obj_in={
+                    "patient_id": guest_patient_id,
+                    "doctor_id": booking_data["doctor_id"],
+                    "patient_name": booking_data["patient_name"],
+                    "patient_age": booking_data["patient_age"],
+                    "patient_gender": booking_data["patient_gender"],
+                    "patient_blood_group": booking_data.get("patient_blood_group"),
+                    "date_time": date_time,
+                    "status": AppointmentStatus.CONFIRMED,
+                    "reason": booking_data.get("reason"),
+                    "queue_number": queue_number,
+                    "queue_date": queue_date,
+                    "queue_status": QueueStatus.WAITING,
+                    "fee": booking_data.get("fee", 0),
+                    "payment_status": PaymentStatus.PAID,
+                }
+            )
+            payment = await self.crud_payment.create(
+                obj_in={
+                    "appointment_id": str(appointment.id),
+                    "amount": booking_data.get("fee", 0),
+                    "transaction_ref": f"TELEGRAM-{str(appointment.id)[-8:].upper()}",
+                }
+            )
+            doctor = await self.crud_user.get_by_id(id=booking_data["doctor_id"])
+            return {
+                "appointment": await self._serialize_appointment_with_queue(
+                    appointment=appointment,
+                    fallback_doctor_name=doctor.name if doctor else None,
+                    fallback_patient_name=booking_data["patient_name"],
+                ),
+                "payment": self._serialize_document(payment),
+                "patient_name": booking_data["patient_name"],
+                "doctor_name": doctor.name if doctor else None,
+            }
+        except HTTPException:
+            raise
+        except Exception as error:
+            logging.error(f"Error in AppointmentController.create_telegram_guest_appointment: {error}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
@@ -253,6 +293,7 @@ class AppointmentController(BaseController):
                 id=appointment_id,
                 obj_in={
                     "status": AppointmentStatus.CANCELLED,
+                    "queue_status": QueueStatus.CANCELLED,
                     "cancelled_by": cancelled_by,
                     "cancel_reason": cancel_reason,
                     "payment_status": PaymentStatus.REFUNDED,
@@ -317,16 +358,11 @@ class AppointmentController(BaseController):
                 doctor_id=appointment.doctor_id,
                 date_time=new_date_time,
             )
-            existing_appointment = await self.crud_appointment.get_by_doctor_and_datetime(
+            queue_date = self._queue_date_key(new_date_time.date())
+            queue_number = await self._next_queue_number(
                 doctor_id=appointment.doctor_id,
-                date_time=new_date_time,
+                queue_date=queue_date,
             )
-            if existing_appointment:
-                logging.warning(f"Reschedule blocked because slot already booked for doctor {appointment.doctor_id}")
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Requested slot has already been booked",
-                )
 
             new_appointment = await self.crud_appointment.create(
                 obj_in={
@@ -340,6 +376,9 @@ class AppointmentController(BaseController):
                     "date_time": new_date_time,
                     "status": AppointmentStatus.CONFIRMED,
                     "reason": reschedule_data.get("reason") or appointment.reason,
+                    "queue_number": queue_number,
+                    "queue_date": queue_date,
+                    "queue_status": QueueStatus.WAITING,
                     "fee": appointment.fee,
                     "payment_status": appointment.payment_status,
                 }
@@ -348,6 +387,7 @@ class AppointmentController(BaseController):
                 id=appointment_id,
                 obj_in={
                     "status": AppointmentStatus.RESCHEDULED,
+                    "queue_status": QueueStatus.CANCELLED,
                     "rescheduled_to_id": str(new_appointment.id),
                 },
             )
@@ -414,9 +454,27 @@ class AppointmentController(BaseController):
                     detail="Doctor can only mark appointments as COMPLETED or NO_SHOW",
                 )
 
+            update_payload = {"status": new_status}
+            if new_status == AppointmentStatus.COMPLETED:
+                update_payload["queue_status"] = QueueStatus.COMPLETED
+            elif new_status == AppointmentStatus.NO_SHOW:
+                queue_date = self._appointment_queue_date(appointment)
+                update_payload.update(
+                    {
+                        "status": AppointmentStatus.CONFIRMED,
+                        "queue_status": QueueStatus.MISSED,
+                        "queue_number": await self._next_queue_number(
+                            doctor_id=appointment.doctor_id,
+                            queue_date=queue_date,
+                        ),
+                        "queue_date": queue_date,
+                        "missed_count": appointment.missed_count + 1,
+                    }
+                )
+
             updated_appointment = await self.crud_appointment.update(
                 id=appointment_id,
-                obj_in={"status": new_status},
+                obj_in=update_payload,
             )
             return self._serialize_document(updated_appointment)
         except HTTPException:
@@ -441,8 +499,11 @@ class AppointmentController(BaseController):
         try:
             logging.info("Executing AppointmentController.list_patient_appointments")
             appointments = await self.crud_appointment.get_by_patient_id(patient_id=patient_id)
+            items = []
+            for appointment in appointments:
+                items.append(await self._serialize_appointment_with_queue(appointment=appointment))
             return {
-                "items": [self._serialize_appointment(appointment=appointment) for appointment in appointments]
+                "items": items
             }
         except Exception as error:
             logging.error(f"Error in AppointmentController.list_patient_appointments: {error}")
@@ -471,9 +532,10 @@ class AppointmentController(BaseController):
                     if appointment.patient_name is None or appointment.patient_phone is None
                 ]
             )
-            return {
-                "items": [
-                    self._serialize_appointment(
+            items = []
+            for appointment in appointments:
+                items.append(
+                    await self._serialize_appointment_with_queue(
                         appointment=appointment,
                         fallback_patient_name=(
                             patient_lookup.get(appointment.patient_id).name
@@ -486,9 +548,8 @@ class AppointmentController(BaseController):
                             else None
                         ),
                     )
-                    for appointment in appointments
-                ]
-            }
+                )
+            return {"items": items}
         except Exception as error:
             logging.error(f"Error in AppointmentController.list_doctor_appointments: {error}")
             raise HTTPException(
@@ -544,9 +605,10 @@ class AppointmentController(BaseController):
                     for user_id in (appointment.patient_id, appointment.doctor_id)
                 ]
             )
-            return {
-                "items": [
-                    self._serialize_appointment(
+            items = []
+            for appointment in appointments:
+                items.append(
+                    await self._serialize_appointment_with_queue(
                         appointment=appointment,
                         fallback_doctor_name=(
                             user_lookup.get(appointment.doctor_id).name
@@ -564,9 +626,8 @@ class AppointmentController(BaseController):
                             else None
                         ),
                     )
-                    for appointment in appointments
-                ]
-            }
+                )
+            return {"items": items}
         except Exception as error:
             logging.error(f"Error in AppointmentController.list_all_appointments: {error}")
             raise HTTPException(
@@ -600,7 +661,7 @@ class AppointmentController(BaseController):
             patient = await self.crud_user.get_by_id(id=appointment.patient_id)
             doctor = await self.crud_user.get_by_id(id=appointment.doctor_id)
             return {
-                "appointment": self._serialize_appointment(
+                "appointment": await self._serialize_appointment_with_queue(
                     appointment=appointment,
                     fallback_doctor_name=doctor.name if doctor else None,
                     fallback_patient_name=patient.name if patient else None,
@@ -866,6 +927,85 @@ class AppointmentController(BaseController):
             if user is not None:
                 lookup[user_id] = user
         return lookup
+
+    async def _next_queue_number(self, *, doctor_id: str, queue_date) -> int:
+        """Return the next patient token number for a doctor's queue date."""
+
+        queue_date_key = self._queue_date_key(queue_date)
+        appointments = await self.crud_appointment.get_by_doctor_id(doctor_id=doctor_id)
+        numbers = [
+            appointment.queue_number
+            for appointment in appointments
+            if appointment.queue_number is not None
+            and self._appointment_queue_date(appointment) == queue_date_key
+        ]
+        return (max(numbers) + 1) if numbers else 1
+
+    async def _serialize_appointment_with_queue(
+        self,
+        *,
+        appointment,
+        fallback_doctor_name: str | None = None,
+        fallback_patient_name: str | None = None,
+        fallback_patient_phone: str | None = None,
+    ) -> dict:
+        payload = self._serialize_appointment(
+            appointment=appointment,
+            fallback_doctor_name=fallback_doctor_name,
+            fallback_patient_name=fallback_patient_name,
+            fallback_patient_phone=fallback_patient_phone,
+        )
+        payload.update(await self._queue_context(appointment=appointment))
+        return payload
+
+    async def _queue_context(self, *, appointment) -> dict:
+        queue_number = appointment.queue_number
+        queue_date = self._appointment_queue_date(appointment)
+        if queue_number is None:
+            return {
+                "current_queue_number": None,
+                "patients_before": None,
+                "total_waiting": None,
+            }
+
+        appointments = await self.crud_appointment.get_by_doctor_id(doctor_id=appointment.doctor_id)
+        active_queue = [
+            item
+            for item in appointments
+            if self._appointment_queue_date(item) == queue_date
+            and item.queue_number is not None
+            and item.status == AppointmentStatus.CONFIRMED
+            and item.queue_status in {QueueStatus.WAITING, QueueStatus.MISSED}
+        ]
+        active_queue.sort(key=lambda item: item.queue_number or 0)
+
+        current_queue_number = active_queue[0].queue_number if active_queue else None
+        patients_before = len(
+            [
+                item
+                for item in active_queue
+                if (item.queue_number or 0) < queue_number
+            ]
+        )
+        return {
+            "current_queue_number": current_queue_number,
+            "patients_before": patients_before,
+            "total_waiting": len(active_queue),
+        }
+
+    def _appointment_queue_date(self, appointment) -> str:
+        """Return a stable YYYY-MM-DD queue key for existing and new appointment rows."""
+
+        return self._queue_date_key(
+            appointment.queue_date or self._normalize_datetime(appointment.date_time).date()
+        )
+
+    def _queue_date_key(self, queue_date) -> str:
+        """Convert queue date values into Mongo-safe YYYY-MM-DD strings."""
+
+        if isinstance(queue_date, str):
+            return queue_date[:10]
+        return queue_date.isoformat()
 
     def _serialize_appointment(
         self,

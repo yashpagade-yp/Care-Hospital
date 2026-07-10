@@ -43,40 +43,37 @@ class HospitalTelegramBot:
         application.add_handler(CommandHandler("appointments", self._appointments))
         application.add_handler(CommandHandler("prescriptions", self._prescriptions))
         application.add_handler(CommandHandler("prescription", self._prescription))
+        application.add_handler(MessageHandler(filters.CONTACT, self._contact))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._text))
         return application
 
     async def _start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(
-            "Welcome to the hospital assistant.\n"
-            "You can ask general hospital questions without login.\n"
-            "For patient-specific actions like appointments or prescriptions, use `/login <email> <password>`.\n"
-            "Then use `/verify <otp>` after you receive the email OTP.\n"
-            "Use `/help` for commands."
+            "Hi, I am the hospital assistant for patients.\n"
+            "You can ask about hospital information, available doctors, doctor timings, and appointments.\n\n"
+            "Try: show doctors, book appointment, show my appointments, or show my prescription.\n"
+            "Booking does not need registration. Prescriptions and private history need web app login."
         )
 
     async def _help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(
-            "Public use:\n"
-            "- ask hospital questions in normal text\n"
-            "\n"
-            "Protected patient actions:\n"
-            "Commands:\n"
-            "/login <email> <password>\n"
-            "/verify <otp>\n"
-            "/logout\n"
-            "/doctors\n"
-            "/availability <doctor_id>\n"
-            "/appointments\n"
-            "/prescriptions\n"
-            "/prescription <appointment_id>\n"
-            "\n"
-            "You can also type: `show me doctors`, `doctor working hours`, `book appointment`, `cancel appointment`, `reschedule appointment`, or `show my prescription`."
+            "You can type normally:\n"
+            "- Show available doctors\n"
+            "- Check doctor timings\n"
+            "- Book appointment\n"
+            "- Show my appointments\n"
+            "- Cancel appointment\n"
+            "- Reschedule appointment\n"
+            "- Show my prescription\n\n"
+            "For booking, say `book appointment`. I will collect basic details and give a token number."
         )
 
     async def _login(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if len(context.args) < 2:
-            await update.effective_message.reply_text("Use `/login <email> <password>`.")
+            await update.effective_message.reply_text(
+                "Please send your patient email and password like this:\n"
+                "/login your@email.com yourPassword"
+            )
             return
         email = context.args[0]
         password = " ".join(context.args[1:])
@@ -84,7 +81,9 @@ class HospitalTelegramBot:
 
     async def _verify(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if len(context.args) < 1:
-            await update.effective_message.reply_text("Use `/verify <otp>`.")
+            await update.effective_message.reply_text(
+                "Please send the 6-digit code from your email. You can send only the code here."
+            )
             return
         otp = context.args[-1]
         email = context.args[0] if len(context.args) > 1 else None
@@ -98,9 +97,9 @@ class HospitalTelegramBot:
 
     async def _availability(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not context.args:
-            await update.effective_message.reply_text("Use `/availability <doctor_id>`.")
+            await self._safe_reply(update, self.agent.handle_text(update.effective_user.id, "doctor timings"))
             return
-        await self._safe_reply(update, self.agent.handle_availability(update.effective_user.id, context.args[0]))
+        await self._safe_reply(update, self.agent.handle_availability(update.effective_user.id, " ".join(context.args)))
 
     async def _appointments(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await self._safe_reply(update, self.agent.handle_appointments(update.effective_user.id))
@@ -110,7 +109,7 @@ class HospitalTelegramBot:
 
     async def _prescription(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not context.args:
-            await update.effective_message.reply_text("Use `/prescription <appointment_id>`.")
+            await self._safe_reply(update, self.agent.handle_prescriptions(update.effective_user.id))
             return
         await self._safe_reply(
             update,
@@ -123,12 +122,38 @@ class HospitalTelegramBot:
         message = update.effective_message.text or ""
         await self._safe_reply(update, self.agent.handle_text(update.effective_user.id, message))
 
+    async def _contact(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not update.effective_message or not update.effective_user or not update.effective_message.contact:
+            return
+        phone = update.effective_message.contact.phone_number or ""
+        await self._safe_reply(update, self.agent.handle_text(update.effective_user.id, phone))
+
     async def _safe_reply(self, update: Update, coro) -> None:
         try:
             reply = await coro
         except BackendApiError as error:
-            reply = str(error)
+            reply = self.agent.format_error(error)
         except Exception as error:  # pragma: no cover - defensive runtime handling
             logger.exception("Unhandled hospital-agent Telegram error: %s", error)
             reply = "Something went wrong in the hospital assistant. Please try again."
-        await update.effective_message.reply_text(reply)
+        for chunk in self._split_message(reply):
+            await update.effective_message.reply_text(chunk)
+
+    @staticmethod
+    def _split_message(message: str, limit: int = 4000) -> list[str]:
+        """Split long replies without exceeding Telegram's message limit."""
+        chunks: list[str] = []
+        remaining = message.strip()
+        while len(remaining) > limit:
+            split_at = remaining.rfind("\n\n", 0, limit + 1)
+            if split_at < 1:
+                split_at = remaining.rfind("\n", 0, limit + 1)
+            if split_at < 1:
+                split_at = remaining.rfind(" ", 0, limit + 1)
+            if split_at < 1:
+                split_at = limit
+            chunks.append(remaining[:split_at].rstrip())
+            remaining = remaining[split_at:].lstrip()
+        if remaining:
+            chunks.append(remaining)
+        return chunks

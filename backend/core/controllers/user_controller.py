@@ -384,7 +384,10 @@ class UserController(BaseController):
         try:
             logging.info("Executing UserController.list_doctors")
             doctors = await self.crud_user.get_doctors()
-            return {"items": self._serialize_user_documents(doctors)}
+            active_doctors = [
+                doctor for doctor in doctors if doctor.doctor_status == DoctorStatus.ACTIVE
+            ]
+            return {"items": self._serialize_user_documents(active_doctors)}
         except Exception as error:
             logging.error(f"Error in UserController.list_doctors: {error}")
             raise HTTPException(
@@ -398,10 +401,13 @@ class UserController(BaseController):
         try:
             logging.info("Executing UserController.list_public_doctors")
             doctors = await self.crud_user.get_doctors()
+            active_doctors = [
+                doctor for doctor in doctors if doctor.doctor_status == DoctorStatus.ACTIVE
+            ]
             return {
                 "items": [
                     self._serialize_public_doctor_document(doctor)
-                    for doctor in doctors
+                    for doctor in active_doctors
                 ]
             }
         except Exception as error:

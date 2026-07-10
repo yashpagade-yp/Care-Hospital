@@ -20,6 +20,20 @@ class BackendApiClient:
     async def verify_login_otp(self, *, email: str, otp: str) -> dict[str, Any]:
         return await self._request("POST", "/v1/auth/verify-login-otp", json={"email": email, "otp": otp})
 
+    async def register_patient(self, *, name: str, phone: str, email: str, password: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/v1/patients/register",
+            json={"name": name, "phone": phone, "email": email, "password": password},
+        )
+
+    async def verify_patient_registration_otp(self, *, email: str, otp: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/v1/patients/verify-otp",
+            json={"email": email, "otp": otp},
+        )
+
     async def list_doctors(self, access_token: str) -> dict[str, Any]:
         return await self._request("GET", "/v1/doctors", access_token=access_token)
 
@@ -48,6 +62,13 @@ class BackendApiClient:
             "POST",
             "/v1/appointments/confirm",
             access_token=access_token,
+            json=payload,
+        )
+
+    async def create_telegram_guest_appointment(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/v1/public/telegram/appointments",
             json=payload,
         )
 

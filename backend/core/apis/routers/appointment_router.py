@@ -16,6 +16,7 @@ from backend.core.apis.schemas.request_schemas.appointment_request_schema import
     ConfirmAppointmentRequest,
     CreateSlotHoldRequest,
     RescheduleAppointmentRequest,
+    TelegramGuestAppointmentRequest,
     UpdateAppointmentStatusRequest,
 )
 from backend.core.apis.schemas.responses_schemas.appointment_response_schema import (
@@ -32,6 +33,32 @@ from backend.core.models.user_model import UserRole
 
 appointment_router = APIRouter()
 logging = logger(__name__)
+
+
+@appointment_router.post(
+    "/v1/public/telegram/appointments",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AppointmentConfirmationResponse,
+    tags=["Appointments"],
+)
+async def create_telegram_guest_appointment(request: TelegramGuestAppointmentRequest):
+    """Create a lightweight public Telegram appointment without web-app login."""
+
+    try:
+        logging.info("Calling POST /v1/public/telegram/appointments endpoint")
+        response = await AppointmentController().create_telegram_guest_appointment(
+            booking_data=request.model_dump(),
+        )
+        return build_response(AppointmentConfirmationResponse, response)
+    except HTTPException as http_error:
+        logging.error(f"Error in POST /v1/public/telegram/appointments endpoint: {http_error}")
+        raise http_error
+    except Exception as error:
+        logging.error(f"Error in POST /v1/public/telegram/appointments endpoint: {error}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error",
+        )
 
 
 @appointment_router.post(
