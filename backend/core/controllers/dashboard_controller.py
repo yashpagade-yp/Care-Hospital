@@ -7,6 +7,7 @@ from odmantic.query import desc
 
 from backend.commons.logger import logger
 from backend.core.controllers.base_controller import BaseController
+from backend.core.controllers.user_controller import UserController
 from backend.core.cruds.appointment_crud import CRUDAppointment
 from backend.core.cruds.invitation_crud import CRUDDoctorInvitation
 from backend.core.cruds.review_crud import CRUDReview
@@ -51,6 +52,9 @@ class DashboardController(BaseController):
                 )
 
             doctors = await self.crud_user.get_doctors()
+            await UserController().claim_telegram_guest_appointments_by_patient_id(
+                patient_id=patient_id
+            )
             appointments = await self.crud_appointment.get_by_patient_id(patient_id=patient_id)
             now = self._utc_now()
             review_map = await self._build_doctor_rating_map()

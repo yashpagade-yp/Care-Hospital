@@ -82,6 +82,25 @@ class GroqLlmClient:
             max_tokens=220,
         )
 
+    async def localize_reply(self, *, reply: str, language: str) -> str:
+        if not self.enabled:
+            raise LlmClientError("Groq LLM is not configured.")
+        if language == "english":
+            return reply
+
+        language_name = {"hindi": "Hindi", "marathi": "Marathi"}.get(language, "English")
+        return await self._chat(
+            system_prompt=(
+                f"Rewrite the hospital assistant reply in natural {language_name}.\n"
+                "Keep doctor names, medicine names, dates, times, OTPs, emails, phone numbers, IDs, and commands unchanged.\n"
+                "Keep the meaning medically safe. Do not add diagnosis, medicine advice, or extra claims.\n"
+                "Return only the translated reply."
+            ),
+            user_prompt=reply,
+            temperature=0.2,
+            max_tokens=420,
+        )
+
     async def _chat(
         self,
         *,

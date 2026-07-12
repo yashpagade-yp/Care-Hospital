@@ -33,6 +33,14 @@ class PatientVerifyOtpRequest(BaseModel):
         max_length=8,
         description="OTP code sent for patient email verification",
     )
+    telegram_guest_appointment_id: str | None = Field(
+        default=None,
+        description="Optional Telegram guest appointment to attach after verification",
+    )
+    telegram_user_id: str | None = Field(
+        default=None,
+        description="Optional Telegram user identifier used to claim guest appointments",
+    )
 
     model_config = ConfigDict(extra="forbid")
 

@@ -35,6 +35,8 @@ Build a thin assistant layer inside `my_hospital/hospital-agent` that allows a p
 - Cancel appointment
 - Answer hospital FAQs
 - View existing prescriptions already present in backend records
+- Respond in English, Hindi, or Marathi based on the patient's language
+- Filter doctors by specialty or patient need and retain that context during booking
 
 ## Not Allowed In V1
 - Diagnosis
@@ -133,6 +135,10 @@ These points are carried forward from `hospital-agent_plan.md` because they defi
 
 ## Expected Assistant Behavior
 - Keep responses simple and patient-friendly
+- Keep conversations natural and respond in the patient's English, Hindi, or Marathi language
+- Show specialty-matched doctors when a focused request is made
+- Preserve filtered doctor context when the patient continues to booking
+- Show all doctors only when the patient asks for the complete list
 - Ask follow-up questions only when needed
 - Use approved backend APIs only
 - Stay role-aware and scope-aware
@@ -148,6 +154,9 @@ These points are carried forward from `hospital-agent_plan.md` because they defi
 - backend API wrapper client implemented
 - SQLite state and short-term memory implemented
 - end-to-end live testing still pending
+- multilingual intent and response handling implemented
+- specialty-filtered doctor discovery and booking continuity implemented
+- automated hospital-agent test suite passing
 
 ## Reference Guidance
 - Use Hermes and OpenClaw only for ideas and patterns

@@ -40,6 +40,8 @@ The hospital agent is responsible for:
 - handling Telegram conversations
 - handling Telegram bot message flow
 - understanding patient requests
+- responding naturally in English, Hindi, or Marathi
+- filtering doctors by specialty or patient need
 - calling approved backend APIs
 - returning simple and safe responses
 - enforcing assistant safety rules
@@ -145,6 +147,8 @@ The first end-to-end flow should be:
   - reschedule flow
   - prescription listing and lookup
   - FAQ fallback
+  - multilingual English, Hindi, and Marathi responses
+  - specialty-based doctor search with filtered booking continuity
 
 ## Run Locally
 1. Create `hospital-agent/.env`

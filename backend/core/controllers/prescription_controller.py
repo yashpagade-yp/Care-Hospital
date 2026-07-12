@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 
 from backend.commons.logger import logger
 from backend.core.controllers.base_controller import BaseController
+from backend.core.controllers.user_controller import UserController
 from backend.core.cruds.appointment_crud import CRUDAppointment
 from backend.core.cruds.prescription_crud import CRUDPrescription
 from backend.core.cruds.user_crud import CRUDUser
@@ -244,6 +245,9 @@ class PrescriptionController(BaseController):
 
         try:
             logging.info("Executing PrescriptionController.list_prescriptions_for_patient")
+            await UserController().claim_telegram_guest_appointments_by_patient_id(
+                patient_id=patient_id
+            )
             prescriptions = await self.crud_prescription.get_by_patient_id(patient_id=patient_id)
             items = []
             for prescription in prescriptions:

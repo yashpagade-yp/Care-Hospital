@@ -9,8 +9,9 @@ from tools.backend_api import BackendApiError
 
 
 class FakeBackend:
-    def __init__(self) -> None:
+    def __init__(self, doctors: list[dict] | None = None) -> None:
         self.private_doctors_called = False
+        self.doctors = doctors or [{"id": "doctor-1", "name": "Public Doctor"}]
 
     async def verify_login_otp(self, *, email: str, otp: str) -> dict:
         return {
@@ -25,7 +26,7 @@ class FakeBackend:
         raise BackendApiError("Invalid authentication credentials")
 
     async def list_public_doctors(self) -> dict:
-        return {"items": [{"id": "doctor-1", "name": "Public Doctor"}]}
+        return {"items": self.doctors}
 
 
 class FakeLlm:
@@ -76,6 +77,7 @@ class PatientTelegramFlowTests(unittest.TestCase):
         )
         self.assertEqual(detect_intent("I am a new user. I don't have any past record"), Intent.REGISTER)
         self.assertEqual(detect_intent("doctor working hours"), Intent.AVAILABILITY)
+        self.assertEqual(detect_intent("show skin doctor"), Intent.DOCTOR_INFO)
 
     def test_doctor_list_hides_backend_id(self) -> None:
         loop = HospitalAgentLoop(
@@ -121,6 +123,58 @@ class PatientTelegramFlowTests(unittest.TestCase):
         output = loop._format_doctor_options(doctors)
 
         self.assertIn("15. Doctor 15", output)
+
+    def test_detects_hindi_and_marathi_messages(self) -> None:
+        loop = HospitalAgentLoop(
+            backend_client=None,
+            store=None,
+            long_term_memory=None,
+            llm_client=None,
+        )
+
+        self.assertEqual(loop._detect_language("मुझे डॉक्टर चाहिए"), "hindi")
+        self.assertEqual(loop._detect_language("मला डॉक्टर पाहिजे"), "marathi")
+
+    def test_filters_doctors_by_patient_need(self) -> None:
+        loop = HospitalAgentLoop(
+            backend_client=None,
+            store=None,
+            long_term_memory=None,
+            llm_client=None,
+        )
+        doctors = [
+            {"id": "doctor-1", "name": "Skin Doctor", "specialty": "Dermatology"},
+            {"id": "doctor-2", "name": "Bone Doctor", "specialty": "Orthopedics"},
+        ]
+
+        filtered, specialty = loop._filter_doctors_for_message("show skin care doctor", doctors)
+
+        self.assertEqual(specialty, "Dermatology")
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["name"], "Skin Doctor")
+
+    def test_booking_can_use_filtered_doctor_context(self) -> None:
+        store = FakeStore()
+        doctors = [
+            {"id": "doctor-1", "name": "Skin Doctor", "specialty": "Dermatology"},
+        ]
+        loop = HospitalAgentLoop(
+            backend_client=FakeBackend(doctors=doctors),
+            store=store,
+            long_term_memory=None,
+            llm_client=None,
+        )
+
+        reply = asyncio.run(
+            loop._start_booking(
+                10,
+                doctor_options=doctors,
+                specialty_filter="Dermatology",
+            )
+        )
+
+        self.assertIn("Dermatology", reply)
+        self.assertEqual(store.flow_state["payload"]["doctor_options"], doctors)
 
     def test_resolves_doctor_from_natural_sentence(self) -> None:
         loop = HospitalAgentLoop(
@@ -219,8 +273,94 @@ class PatientTelegramFlowTests(unittest.TestCase):
             )
         )
 
-        self.assertIn("no registration is needed", reply.lower())
+        self.assertIn("do not need to register", reply.lower())
         self.assertEqual(store.flow_state["step"], "doctor_choice")
+
+    def test_register_intent_starts_telegram_registration(self) -> None:
+        store = FakeStore()
+        loop = HospitalAgentLoop(
+            backend_client=FakeBackend(),
+            store=store,
+            long_term_memory=None,
+            llm_client=FakeLlm(),
+        )
+
+        reply = loop._start_patient_registration(telegram_user_id=10)
+
+        self.assertIn("register the patient here", reply)
+        self.assertEqual(store.flow_state["active_intent"], Intent.REGISTER.value)
+        self.assertEqual(store.flow_state["step"], "register_name")
+
+    def test_post_booking_registration_offer_keeps_guest_appointment_id(self) -> None:
+        store = FakeStore()
+        loop = HospitalAgentLoop(
+            backend_client=FakeBackend(),
+            store=store,
+            long_term_memory=None,
+            llm_client=FakeLlm(),
+        )
+
+        reply = asyncio.run(
+            loop._continue_flow(
+                10,
+                "yes",
+                {
+                    "active_intent": Intent.REGISTER.value,
+                    "step": "post_booking_offer",
+                    "payload": {
+                        "telegram_guest_appointment_id": "appointment-1",
+                        "patient_name": "Vishu Roy",
+                    },
+                },
+            )
+        )
+
+        self.assertIn("Vishu Roy", reply)
+        self.assertEqual(store.flow_state["step"], "register_phone")
+        self.assertEqual(
+            store.flow_state["payload"]["telegram_guest_appointment_id"],
+            "appointment-1",
+        )
+
+    def test_prescription_request_without_session_starts_login(self) -> None:
+        store = FakeStore()
+        loop = HospitalAgentLoop(
+            backend_client=FakeBackend(),
+            store=store,
+            long_term_memory=None,
+            llm_client=FakeLlm(),
+        )
+
+        reply = asyncio.run(loop._start_prescription_lookup(telegram_user_id=10))
+
+        self.assertIn("login", reply.lower())
+        self.assertEqual(store.flow_state["active_intent"], Intent.PRESCRIPTION.value)
+        self.assertEqual(store.flow_state["step"], "login_email")
+
+    def test_prescription_login_email_accepts_extra_text(self) -> None:
+        store = FakeStore()
+        loop = HospitalAgentLoop(
+            backend_client=FakeBackend(),
+            store=store,
+            long_term_memory=None,
+            llm_client=FakeLlm(),
+        )
+
+        reply = asyncio.run(
+            loop._continue_flow(
+                10,
+                "my email is vishu@example.com and password is secret",
+                {
+                    "active_intent": Intent.PRESCRIPTION.value,
+                    "step": "login_email",
+                    "payload": {},
+                },
+            )
+        )
+
+        self.assertIn("password", reply.lower())
+        self.assertEqual(store.flow_state["step"], "login_password")
+        self.assertEqual(store.flow_state["payload"]["email"], "vishu@example.com")
 
 
 if __name__ == "__main__":

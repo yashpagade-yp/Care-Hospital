@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 
 from backend.commons.logger import logger
 from backend.core.controllers.base_controller import BaseController
+from backend.core.controllers.user_controller import UserController
 from backend.core.cruds.appointment_crud import CRUDAppointment
 from backend.core.cruds.availability_crud import CRUDDoctorAvailability
 from backend.core.cruds.payment_crud import CRUDPayment
@@ -203,6 +204,7 @@ class AppointmentController(BaseController):
                 obj_in={
                     "patient_id": guest_patient_id,
                     "doctor_id": booking_data["doctor_id"],
+                    "telegram_user_id": booking_data.get("telegram_user_id"),
                     "patient_name": booking_data["patient_name"],
                     "patient_age": booking_data["patient_age"],
                     "patient_gender": booking_data["patient_gender"],
@@ -498,6 +500,9 @@ class AppointmentController(BaseController):
 
         try:
             logging.info("Executing AppointmentController.list_patient_appointments")
+            await UserController().claim_telegram_guest_appointments_by_patient_id(
+                patient_id=patient_id
+            )
             appointments = await self.crud_appointment.get_by_patient_id(patient_id=patient_id)
             items = []
             for appointment in appointments:
