@@ -17,6 +17,134 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONSULTATION_FEE = 0.0
 DATE_TIME_FORMAT_HINT = "Please send the date and time like `2026-07-18 09:00`."
 
+LANGUAGE_LABELS = {
+    "english": "English",
+    "hindi": "Hindi",
+    "marathi": "Marathi",
+}
+
+SPECIALTY_KEYWORDS = {
+    "General Medicine": {
+        "general",
+        "general physician",
+        "physician",
+        "family doctor",
+        "fever",
+        "cold",
+        "cough",
+        "diabetes",
+        "bp",
+        "blood pressure",
+        "फिजिशियन",
+        "सामान्य",
+        "ताप",
+        "खोकला",
+        "बुखार",
+        "सर्दी",
+    },
+    "Orthopedics": {
+        "orthopedic",
+        "orthopedics",
+        "bone",
+        "joint",
+        "fracture",
+        "back pain",
+        "knee",
+        "हाड",
+        "जोड़",
+        "हड्डी",
+        "फ्रॅक्चर",
+        "फ्रैक्चर",
+        "कमर",
+        "गुडघा",
+    },
+    "Dermatology": {
+        "skin",
+        "skincare",
+        "skin care",
+        "dermatology",
+        "dermatologist",
+        "acne",
+        "rash",
+        "hair",
+        "त्वचा",
+        "चर्म",
+        "स्किन",
+        "मुरुम",
+        "दाने",
+        "बाल",
+        "केस",
+    },
+    "Pediatrics": {
+        "child",
+        "children",
+        "kid",
+        "baby",
+        "pediatric",
+        "pediatrics",
+        "बच्चा",
+        "बाळ",
+        "लहान मुल",
+        "मुलांचा",
+    },
+    "Cardiology": {
+        "heart",
+        "cardiology",
+        "cardiologist",
+        "chest pain",
+        "दिल",
+        "हृदय",
+        "छाती",
+    },
+    "Neurology": {
+        "neuro",
+        "neurology",
+        "neurologist",
+        "headache",
+        "migraine",
+        "brain",
+        "nerves",
+        "डोकेदुखी",
+        "सिरदर्द",
+        "नस",
+        "दिमाग",
+    },
+    "Gynecology": {
+        "gynecology",
+        "gynaecology",
+        "gynecologist",
+        "women",
+        "pregnancy",
+        "period",
+        "महिला",
+        "गर्भ",
+        "प्रेग्नेंसी",
+        "पीरियड",
+    },
+    "ENT": {
+        "ent",
+        "ear",
+        "nose",
+        "throat",
+        "hearing",
+        "कान",
+        "नाक",
+        "गला",
+        "घसा",
+    },
+    "Ophthalmology": {
+        "eye",
+        "eyes",
+        "vision",
+        "ophthalmology",
+        "ophthalmologist",
+        "आंख",
+        "डोळा",
+        "नजर",
+        "दृष्टी",
+    },
+}
+
 
 class HospitalAgentLoop:
     def __init__(
@@ -37,6 +165,8 @@ class HospitalAgentLoop:
         if not message:
             return self._default_help()
 
+        flow: dict[str, Any] = {}
+        language = "english"
         otp = self._extract_otp(message)
         if otp and self._pending_login_email(telegram_user_id):
             return await self.handle_verify(telegram_user_id, otp)
@@ -46,6 +176,7 @@ class HospitalAgentLoop:
 
         try:
             flow = self.store.get_flow_state(telegram_user_id)
+            language = self._detect_language(message, flow)
             if flow:
                 reply = await self._continue_flow(telegram_user_id, message, flow)
             else:
@@ -54,6 +185,7 @@ class HospitalAgentLoop:
                     reply = await self.handle_list_doctors(
                         telegram_user_id,
                         include_timings=self._asks_for_timings(message),
+                        query=message,
                     )
                 elif intent == Intent.REGISTER:
                     reply = (
@@ -64,7 +196,7 @@ class HospitalAgentLoop:
                 elif intent == Intent.APPOINTMENTS:
                     reply = await self.handle_appointments(telegram_user_id)
                 elif intent == Intent.BOOK:
-                    reply = await self._start_booking(telegram_user_id)
+                    reply = await self._start_booking(telegram_user_id, query=message)
                 elif intent == Intent.AVAILABILITY:
                     reply = self._start_availability(telegram_user_id)
                 elif intent == Intent.CANCEL:
@@ -83,6 +215,8 @@ class HospitalAgentLoop:
             reply = self.format_error(error)
             self.store.clear_flow_state(telegram_user_id)
 
+        reply = await self._localize_reply(reply, language)
+        self._remember_flow_language(telegram_user_id, language)
         self.store.add_short_term_memory(telegram_user_id, "assistant", reply)
         return reply
 
@@ -144,6 +278,17 @@ class HospitalAgentLoop:
                 f"Hello {user.get('name', 'there')}.\n\n"
                 f"{booking_message}"
             )
+        if (
+            pending_flow
+            and pending_flow.get("active_intent") == Intent.PRESCRIPTION.value
+            and pending_flow.get("step") == "awaiting_login_otp"
+        ):
+            prescription_message = await self.handle_prescriptions(telegram_user_id)
+            return (
+                "You are logged in as a patient.\n"
+                f"Hello {user.get('name', 'there')}.\n\n"
+                f"{prescription_message}"
+            )
         return (
             "You are logged in as a patient.\n"
             f"Hello {user.get('name', 'there')}.\n"
@@ -155,25 +300,41 @@ class HospitalAgentLoop:
         self.store.clear_flow_state(telegram_user_id)
         return "You have been logged out."
 
-    async def handle_list_doctors(self, telegram_user_id: int, *, include_timings: bool = False) -> str:
+    async def handle_list_doctors(
+        self,
+        telegram_user_id: int,
+        *,
+        include_timings: bool = False,
+        query: str = "",
+    ) -> str:
         doctors = await self._load_doctors(telegram_user_id)
         if not doctors:
             return "No doctors are available right now. Please try again later."
+        doctors, specialty = self._filter_doctors_for_message(query, doctors)
 
         self.store.set_flow_state(
             telegram_user_id,
             active_intent=Intent.AVAILABILITY.value,
             step="doctor_choice",
-            payload={"doctor_options": doctors, "from_doctor_list": True},
+            payload={
+                "doctor_options": doctors,
+                "from_doctor_list": True,
+                "specialty_filter": specialty,
+            },
+        )
+        intro = (
+            f"I found these {specialty} doctors for you:"
+            if specialty
+            else "Here are the available doctors:"
         )
         if include_timings:
             return (
-                "Here are the available doctors:\n"
+                f"{intro}\n"
                 f"{await self._format_doctor_options_with_timings(telegram_user_id, doctors)}\n\n"
                 "To book, say `book appointment`."
             )
         return (
-            "Here are the available doctors:\n"
+            f"{intro}\n"
             f"{self._format_doctor_options(doctors)}\n\n"
             "Reply with a doctor number to see timings, or say `book appointment` to start booking."
         )
@@ -256,23 +417,37 @@ class HospitalAgentLoop:
         )
         return self._format_prescription_detail(response)
 
-    async def _start_booking(self, telegram_user_id: int) -> str:
-        doctors = await self._load_doctors(telegram_user_id)
+    async def _start_booking(
+        self,
+        telegram_user_id: int,
+        *,
+        query: str = "",
+        doctor_options: list[dict[str, Any]] | None = None,
+        specialty_filter: str | None = None,
+    ) -> str:
+        doctors = doctor_options or await self._load_doctors(telegram_user_id)
         if not doctors:
             return "No doctors are available right now. Please try again later."
+        if doctor_options is None:
+            doctors, specialty_filter = self._filter_doctors_for_message(query, doctors)
 
         self.store.set_flow_state(
             telegram_user_id,
             active_intent=Intent.BOOK.value,
             step="doctor_choice",
-            payload={"doctor_options": doctors},
+            payload={"doctor_options": doctors, "specialty_filter": specialty_filter},
+        )
+        doctor_line = (
+            f"Please choose a {specialty_filter} doctor:"
+            if specialty_filter
+            else "Please choose a doctor:"
         )
         return (
-            "Sure, I can help you book an appointment.\n"
-            "No registration is needed for booking.\n"
-            "Please choose a doctor:\n"
+            "Of course, I can help you book an appointment.\n"
+            "You do not need to register first.\n"
+            f"{doctor_line}\n"
             f"{self._format_doctor_options(doctors)}\n\n"
-            "Reply with the doctor number, name, or specialty."
+            "You can reply with the doctor number, name, or specialty."
         )
 
     def _start_auth_choice(self, telegram_user_id: int) -> str:
@@ -289,10 +464,15 @@ class HospitalAgentLoop:
         )
 
     def _start_patient_registration(self, telegram_user_id: int) -> str:
+        self.store.set_flow_state(
+            telegram_user_id,
+            active_intent=Intent.REGISTER.value,
+            step="register_name",
+            payload={},
+        )
         return (
-            "For booking, registration is not needed in Telegram.\n"
-            "Say `book appointment` and I will collect only basic details.\n\n"
-            "For prescriptions or private history, please register/login in the web app."
+            "Sure, I can register the patient here in Telegram.\n"
+            "Please send the patient's full name."
         )
 
     def _start_availability(self, telegram_user_id: int) -> str:
@@ -341,7 +521,33 @@ class HospitalAgentLoop:
         )
 
     async def _start_prescription_lookup(self, telegram_user_id: int) -> str:
-        return await self.handle_prescriptions(telegram_user_id)
+        if not self._get_patient_session(telegram_user_id):
+            return self._start_patient_login(
+                telegram_user_id,
+                next_action=Intent.PRESCRIPTION.value,
+            )
+        try:
+            return await self.handle_prescriptions(telegram_user_id)
+        except BackendApiError as error:
+            if not self._is_auth_error(error):
+                raise
+            self.store.clear_auth_session(telegram_user_id)
+            return self._start_patient_login(
+                telegram_user_id,
+                next_action=Intent.PRESCRIPTION.value,
+            )
+
+    def _start_patient_login(self, telegram_user_id: int, *, next_action: str | None = None) -> str:
+        self.store.set_flow_state(
+            telegram_user_id,
+            active_intent=Intent.PRESCRIPTION.value,
+            step="login_email",
+            payload={"next_action": next_action or Intent.PRESCRIPTION.value},
+        )
+        return (
+            "Please login with your patient account to view prescriptions.\n"
+            "Send your patient email address first."
+        )
 
     async def _continue_flow(self, telegram_user_id: int, message: str, flow: dict[str, Any]) -> str:
         if self._is_cancel_word(message):
@@ -359,7 +565,9 @@ class HospitalAgentLoop:
         if intent == Intent.AVAILABILITY.value:
             return await self._continue_availability(telegram_user_id, message, payload)
         if intent == Intent.PRESCRIPTION.value:
-            return await self._continue_prescription(telegram_user_id, message, payload)
+            return await self._continue_prescription(telegram_user_id, message, step, payload)
+        if intent == Intent.REGISTER.value:
+            return await self._continue_patient_registration(telegram_user_id, message, step, payload)
         if intent == Intent.CANCEL.value:
             return await self._continue_cancel(telegram_user_id, message, step, payload)
         if intent == Intent.RESCHEDULE.value:
@@ -378,7 +586,11 @@ class HospitalAgentLoop:
     ) -> str:
         if detect_intent(message) == Intent.BOOK:
             self.store.clear_flow_state(telegram_user_id)
-            return await self._start_booking(telegram_user_id)
+            return await self._start_booking(
+                telegram_user_id,
+                doctor_options=payload.get("doctor_options"),
+                specialty_filter=payload.get("specialty_filter"),
+            )
 
         doctors = payload.get("doctor_options") or await self._load_doctors(telegram_user_id)
         doctor, matches = self._resolve_doctor(message, doctors)
@@ -387,7 +599,7 @@ class HospitalAgentLoop:
                 telegram_user_id,
                 active_intent=Intent.AVAILABILITY.value,
                 step="doctor_choice",
-                payload={"doctor_options": matches},
+                payload={"doctor_options": matches, "specialty_filter": payload.get("specialty_filter")},
             )
             return (
                 "I found these matching doctors:\n"
@@ -399,7 +611,7 @@ class HospitalAgentLoop:
                 telegram_user_id,
                 active_intent=Intent.AVAILABILITY.value,
                 step="doctor_choice",
-                payload={"doctor_options": doctors},
+                payload={"doctor_options": doctors, "specialty_filter": payload.get("specialty_filter")},
             )
             if self._is_confusion_message(message):
                 return (
@@ -413,6 +625,142 @@ class HospitalAgentLoop:
 
         self.store.clear_flow_state(telegram_user_id)
         return await self._doctor_availability_reply(telegram_user_id, doctor)
+
+    async def _continue_patient_registration(
+        self,
+        telegram_user_id: int,
+        message: str,
+        step: str,
+        payload: dict[str, Any],
+    ) -> str:
+        if step == "post_booking_offer":
+            if self._is_yes(message) or detect_intent(message) == Intent.REGISTER:
+                payload["name"] = payload.get("patient_name", "")
+                self.store.set_flow_state(
+                    telegram_user_id,
+                    active_intent=Intent.REGISTER.value,
+                    step="register_name" if not payload["name"] else "register_phone",
+                    payload=payload,
+                )
+                if payload["name"]:
+                    return (
+                        f"I will register the patient as {payload['name']}.\n"
+                        "Please send the patient's phone number."
+                    )
+                return "Please send the patient's full name."
+            self.store.clear_flow_state(telegram_user_id)
+            return (
+                "No problem. The appointment is still booked.\n"
+                "You can say `register` later if you want prescriptions and appointment history in the patient dashboard."
+            )
+
+        if step == "register_name":
+            if len(message.strip()) < 2:
+                return "Please send the patient's full name."
+            payload["name"] = message.strip()
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.REGISTER.value,
+                step="register_phone",
+                payload=payload,
+            )
+            return "Please send the patient's phone number."
+
+        if step == "register_phone":
+            phone = self._normalize_phone(message)
+            if not phone:
+                return "Please send a valid phone number with at least 10 digits."
+            payload["phone"] = phone
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.REGISTER.value,
+                step="register_email",
+                payload=payload,
+            )
+            return "Please send the patient's email address."
+
+        if step == "register_email":
+            email = message.strip().lower()
+            if not self._looks_like_email(email):
+                return "Please send a valid email address."
+            payload["email"] = email
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.REGISTER.value,
+                step="register_password",
+                payload=payload,
+            )
+            return "Please create a password with at least 8 characters."
+
+        if step == "register_password":
+            password = message.strip()
+            if len(password) < 8:
+                return "Password must be at least 8 characters. Please send a stronger password."
+            payload["password"] = password
+            try:
+                await self.backend_client.register_patient(
+                    name=payload["name"],
+                    phone=payload["phone"],
+                    email=payload["email"],
+                    password=password,
+                )
+            except BackendApiError as error:
+                if "already exists" in str(error).lower():
+                    self.store.clear_flow_state(telegram_user_id)
+                    return (
+                        "A patient account already exists for this email.\n"
+                        "Please login with that account to view appointments and prescriptions."
+                    )
+                return self.format_error(error)
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.REGISTER.value,
+                step="register_verify_otp",
+                payload=payload,
+            )
+            return (
+                "I created the patient account and sent a verification code to the email.\n"
+                "Please send the code here."
+            )
+
+        if step == "register_verify_otp":
+            otp = self._extract_otp(message)
+            if not otp:
+                return "Please send the verification code from your email."
+            try:
+                await self.backend_client.verify_patient_registration_otp(
+                    email=payload["email"],
+                    otp=otp,
+                    telegram_guest_appointment_id=payload.get("telegram_guest_appointment_id"),
+                    telegram_user_id=str(telegram_user_id),
+                )
+                await self.backend_client.start_login(
+                    email=payload["email"],
+                    password=payload["password"],
+                )
+            except BackendApiError as error:
+                return self.format_error(error)
+            self.store.set_pending_login(telegram_user_id, payload["email"])
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.REGISTER.value,
+                step="awaiting_login_otp",
+                payload={"email": payload["email"]},
+            )
+            return (
+                "Your patient account is verified.\n"
+                "I sent one more login code to your email so this Telegram chat can access the patient account securely.\n"
+                "Please send that code here."
+            )
+
+        if step == "awaiting_login_otp":
+            otp = self._extract_otp(message)
+            if not otp:
+                return "Please send the 6-digit login code from your email."
+            return await self.handle_verify(telegram_user_id, otp, payload.get("email"))
+
+        self.store.clear_flow_state(telegram_user_id)
+        return self._default_help()
 
     async def _continue_booking(
         self,
@@ -593,7 +941,7 @@ class HospitalAgentLoop:
                     telegram_user_id,
                     active_intent=Intent.BOOK.value,
                     step="doctor_choice",
-                    payload={"doctor_options": matches},
+                    payload={"doctor_options": matches, "specialty_filter": payload.get("specialty_filter")},
                 )
                 return (
                     "I found these matching doctors:\n"
@@ -714,6 +1062,7 @@ class HospitalAgentLoop:
                 return "Okay, I did not book the appointment."
 
             request_payload = {
+                "telegram_user_id": str(telegram_user_id),
                 "doctor_id": self._doctor_id(payload["doctor"]),
                 "date_time": payload["date_time"],
                 "patient_name": payload["patient_name"],
@@ -725,15 +1074,25 @@ class HospitalAgentLoop:
                 request_payload["patient_blood_group"] = payload["patient_blood_group"]
 
             response = await self.backend_client.create_telegram_guest_appointment(request_payload)
-            self.store.clear_flow_state(telegram_user_id)
             appointment = response.get("appointment", {})
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.REGISTER.value,
+                step="post_booking_offer",
+                payload={
+                    "telegram_guest_appointment_id": appointment.get("id"),
+                    "telegram_user_id": str(telegram_user_id),
+                    "patient_name": payload["patient_name"],
+                },
+            )
             return (
                 "Your appointment is booked.\n"
                 f"Doctor: {response.get('doctor_name') or payload['doctor'].get('name', '-')}\n"
                 f"Date and time: {self._format_datetime(appointment.get('date_time') or payload['date_time'])}\n"
                 f"{self._format_queue_line(appointment)}\n"
                 "Payment: mock payment completed.\n\n"
-                "To view prescriptions later, please register/login in the web app."
+                "To view prescriptions and appointment history later, please register.\n"
+                "Would you like to register now? Reply `yes` or `no`."
             )
 
         self.store.clear_flow_state(telegram_user_id)
@@ -855,8 +1214,56 @@ class HospitalAgentLoop:
         self,
         telegram_user_id: int,
         message: str,
+        step: str,
         payload: dict[str, Any],
     ) -> str:
+        if step == "login_email":
+            email = self._extract_email(message)
+            if not email:
+                return "Please send a valid patient email address."
+            payload["email"] = email
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.PRESCRIPTION.value,
+                step="login_password",
+                payload=payload,
+            )
+            return "Please send your patient account password."
+
+        if step == "login_password":
+            password = message.strip()
+            if not password:
+                return "Please send your patient account password."
+            try:
+                response = await self.backend_client.start_login(
+                    email=payload["email"],
+                    password=password,
+                )
+            except BackendApiError as error:
+                return self.format_error(error)
+            self.store.set_pending_login(telegram_user_id, payload["email"])
+            self.store.set_flow_state(
+                telegram_user_id,
+                active_intent=Intent.PRESCRIPTION.value,
+                step="awaiting_login_otp",
+                payload={"email": payload["email"]},
+            )
+            return (
+                "I sent a 6-digit login code to your email.\n"
+                f"Email: {response.get('email', payload['email'])}\n"
+                "Please send the code here."
+            )
+
+        if step == "awaiting_login_otp":
+            otp = self._extract_otp(message)
+            if not otp:
+                return "Please send the 6-digit login code from your email."
+            login_reply = await self.handle_verify(telegram_user_id, otp, payload.get("email"))
+            if "You are logged in as a patient" not in login_reply:
+                return login_reply
+            prescription_reply = await self.handle_prescriptions(telegram_user_id)
+            return f"{login_reply}\n\n{prescription_reply}"
+
         options = payload.get("prescription_options", [])
         selected = self._resolve_prescription(message, options)
         if selected is None:
@@ -896,6 +1303,7 @@ class HospitalAgentLoop:
             "register_email",
             "register_password",
             "register_verify_otp",
+            "post_booking_offer",
             "patient_phone",
             "patient_age",
             "patient_gender",
@@ -917,9 +1325,17 @@ class HospitalAgentLoop:
             return await self.handle_list_doctors(
                 telegram_user_id,
                 include_timings=self._asks_for_timings(message),
+                query=message,
             )
         if intent == Intent.BOOK:
-            return await self._start_booking(telegram_user_id)
+            payload = flow.get("payload") or {}
+            doctor_options = payload.get("doctor_options") if active_intent == Intent.AVAILABILITY.value else None
+            return await self._start_booking(
+                telegram_user_id,
+                query=message,
+                doctor_options=doctor_options,
+                specialty_filter=payload.get("specialty_filter"),
+            )
         if intent == Intent.REGISTER:
             return (
                 self._registration_process_help()
@@ -990,6 +1406,8 @@ class HospitalAgentLoop:
         return self._default_help()
 
     async def _detect_intent(self, message: str, conversation_history: str) -> Intent:
+        if self._is_social_identity_message(message):
+            return Intent.FAQ
         heuristic_intent = detect_intent(message)
         if heuristic_intent != Intent.UNKNOWN:
             return heuristic_intent
@@ -1004,6 +1422,132 @@ class HospitalAgentLoop:
         except LlmClientError as error:
             logger.warning("Groq intent classification failed, using unknown intent: %s", error)
             return Intent.UNKNOWN
+
+    def _detect_language(self, message: str, flow: dict[str, Any] | None = None) -> str:
+        payload = (flow or {}).get("payload") or {}
+        text = message.strip().lower()
+        if not text:
+            return payload.get("language", "english")
+
+        devanagari_count = sum(1 for char in message if "\u0900" <= char <= "\u097f")
+        if devanagari_count:
+            marathi_markers = {
+                "आहे",
+                "मला",
+                "माझ",
+                "तुम्ही",
+                "काय",
+                "डॉक्टर",
+                "रुग्ण",
+                "भेट",
+                "करायची",
+                "सांगा",
+                "पाहिजे",
+            }
+            hindi_markers = {
+                "है",
+                "मुझे",
+                "मेरा",
+                "आप",
+                "क्या",
+                "अस्पताल",
+                "मरीज",
+                "करना",
+                "बताओ",
+                "चाहिए",
+            }
+            marathi_score = sum(1 for word in marathi_markers if word in text)
+            hindi_score = sum(1 for word in hindi_markers if word in text)
+            return "marathi" if marathi_score >= hindi_score else "hindi"
+
+        if any(word in text for word in {"namaste", "mujhe", "mera", "hai", "doctor chahiye", "dard"}):
+            return "hindi"
+        if any(word in text for word in {"mala", "majha", "aahe", "pahije", "sanga", "doctor hava"}):
+            return "marathi"
+        return payload.get("language", "english")
+
+    async def _localize_reply(self, reply: str, language: str) -> str:
+        if language == "english" or language not in LANGUAGE_LABELS:
+            return reply
+        if self.llm_client.enabled:
+            try:
+                return await self.llm_client.localize_reply(reply=reply, language=language)
+            except LlmClientError as error:
+                logger.warning("Groq reply localization failed, using English reply: %s", error)
+        return reply
+
+    def _remember_flow_language(self, telegram_user_id: int, language: str) -> None:
+        if language not in LANGUAGE_LABELS:
+            return
+        flow = self.store.get_flow_state(telegram_user_id)
+        if not flow:
+            return
+        payload = flow.get("payload") or {}
+        if payload.get("language") == language:
+            return
+        payload["language"] = language
+        self.store.set_flow_state(
+            telegram_user_id,
+            active_intent=flow["active_intent"],
+            step=flow["step"],
+            payload=payload,
+        )
+
+    def _filter_doctors_for_message(
+        self,
+        message: str,
+        doctors: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        specialty = self._specialty_from_message(message)
+        if not specialty or self._asks_for_all_doctors(message):
+            return doctors, None
+
+        filtered = [
+            doctor
+            for doctor in doctors
+            if specialty.lower() in str(doctor.get("specialty") or "").lower()
+        ]
+        return (filtered or doctors), specialty if filtered else None
+
+    def _specialty_from_message(self, message: str) -> str | None:
+        text = message.lower()
+        if not text:
+            return None
+        for specialty, keywords in SPECIALTY_KEYWORDS.items():
+            if any(keyword in text for keyword in keywords):
+                return specialty
+        return None
+
+    def _asks_for_all_doctors(self, message: str) -> bool:
+        lowered = message.lower()
+        return any(
+            phrase in lowered
+            for phrase in {
+                "all doctors",
+                "whole doctor list",
+                "full doctor list",
+                "list all",
+                "सभी डॉक्टर",
+                "सारे डॉक्टर",
+                "सगळे डॉक्टर",
+                "सर्व डॉक्टर",
+            }
+        )
+
+    def _is_social_identity_message(self, message: str) -> bool:
+        lowered = message.lower()
+        return any(
+            phrase in lowered
+            for phrase in {
+                "remember me",
+                "do you know me",
+                "who am i",
+                "i am ",
+                "my name is",
+                "mujhe yaad",
+                "mala aathav",
+            }
+        )
 
     def _require_patient_session(self, telegram_user_id: int) -> dict[str, Any]:
         session = self._get_patient_session(telegram_user_id)
@@ -1035,9 +1579,9 @@ class HospitalAgentLoop:
     async def _doctor_availability_reply(self, telegram_user_id: int, doctor: dict[str, Any]) -> str:
         summary = await self._doctor_availability_summary(telegram_user_id, doctor)
         return (
-            f"{doctor.get('name', 'This doctor')} timings:\n"
+            f"Here are the available timings for {doctor.get('name', 'this doctor')}:\n"
             f"{summary}\n\n"
-            "If you want to book, say `book appointment`."
+            "If this works for you, say `book appointment`."
         )
 
     async def _doctor_availability_summary(self, telegram_user_id: int, doctor: dict[str, Any]) -> str:
@@ -1087,7 +1631,7 @@ class HospitalAgentLoop:
             qualification = doctor.get("qualification") or "Qualification not listed"
             experience = doctor.get("experience_years")
             experience_text = f"{experience} years experience" if experience is not None else "experience not listed"
-            services = doctor.get("services") or []
+            services = self._doctor_services(doctor)
             services_text = f" Services: {', '.join(services[:4])}." if services else ""
             lines.append(
                 f"{index}. {doctor.get('name', 'Doctor')} - {specialty}, {qualification}, {experience_text}.{services_text}"
@@ -1179,7 +1723,7 @@ class HospitalAgentLoop:
                     doctor.get("name"),
                     doctor.get("specialty"),
                     doctor.get("qualification"),
-                    " ".join(doctor.get("services") or []),
+                    " ".join(self._doctor_services(doctor)),
                 )
             ]
             searchable = " ".join(
@@ -1191,6 +1735,14 @@ class HospitalAgentLoop:
         if len(matches) == 1:
             return matches[0], []
         return None, matches
+
+    def _doctor_services(self, doctor: dict[str, Any]) -> list[str]:
+        services = doctor.get("services") or []
+        if isinstance(services, list):
+            return [str(service) for service in services if str(service).strip()]
+        if isinstance(services, str):
+            return [part.strip() for part in re.split(r"[,;]", services) if part.strip()]
+        return []
 
     def _resolve_appointment(
         self,
@@ -1370,6 +1922,10 @@ class HospitalAgentLoop:
 
     def _looks_like_email(self, value: str) -> bool:
         return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value.strip()))
+
+    def _extract_email(self, value: str) -> str | None:
+        match = re.search(r"[^@\s]+@[^@\s]+\.[^@\s]+", value.strip())
+        return match.group(0).lower() if match else None
 
     def _extract_otp(self, value: str) -> str | None:
         match = re.search(r"\b\d{6}\b", value)

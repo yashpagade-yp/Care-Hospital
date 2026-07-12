@@ -53,6 +53,10 @@ class Appointment(Model):
 
     patient_id: str = Field(..., description="Identifier of the patient user")
     doctor_id: str = Field(..., description="Identifier of the doctor user")
+    telegram_user_id: Optional[str] = Field(
+        default=None,
+        description="Telegram user identifier for guest bookings before registration",
+    )
     patient_name: Optional[str] = Field(
         default=None,
         description="Patient name snapshot captured at booking time",

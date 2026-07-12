@@ -98,6 +98,8 @@ async def verify_patient_otp(request: PatientVerifyOtpRequest):
         response = await UserController().verify_patient_otp(
             email=request.email,
             otp=request.otp,
+            telegram_guest_appointment_id=request.telegram_guest_appointment_id,
+            telegram_user_id=request.telegram_user_id,
         )
         return build_response(PatientProfileResponse, response)
     except HTTPException as http_error:

@@ -58,6 +58,10 @@ class ConfirmAppointmentRequest(BaseModel):
 class TelegramGuestAppointmentRequest(BaseModel):
     """Public Telegram booking payload for lightweight guest appointments."""
 
+    telegram_user_id: Optional[str] = Field(
+        default=None,
+        description="Telegram user identifier used to link a later patient registration",
+    )
     doctor_id: str = Field(..., description="Doctor selected by the Telegram patient")
     date_time: datetime = Field(..., description="Requested appointment date and time")
     patient_name: str = Field(..., min_length=2, description="Patient name captured in Telegram")

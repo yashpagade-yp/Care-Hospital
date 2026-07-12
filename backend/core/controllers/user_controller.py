@@ -14,8 +14,10 @@ from backend.commons.auth import (
 )
 from backend.commons.logger import logger
 from backend.core.controllers.base_controller import BaseController
+from backend.core.cruds.appointment_crud import CRUDAppointment
 from backend.core.cruds.availability_crud import CRUDDoctorAvailability
 from backend.core.cruds.invitation_crud import CRUDDoctorInvitation
+from backend.core.cruds.prescription_crud import CRUDPrescription
 from backend.core.cruds.user_crud import CRUDUser
 from backend.core.models.DoctorAvailability import AvailabilityType
 from backend.core.models.Invitation import InvitationStatus
@@ -35,6 +37,8 @@ class UserController(BaseController):
         self.crud_user = CRUDUser()
         self.crud_invitation = CRUDDoctorInvitation()
         self.crud_availability = CRUDDoctorAvailability()
+        self.crud_appointment = CRUDAppointment()
+        self.crud_prescription = CRUDPrescription()
 
     async def register_patient(self, patient_data: dict) -> dict:
         """Register a new patient account and issue a verification OTP.
@@ -93,7 +97,13 @@ class UserController(BaseController):
                 detail="Internal Server Error",
             )
 
-    async def verify_patient_otp(self, email: str, otp: str) -> dict:
+    async def verify_patient_otp(
+        self,
+        email: str,
+        otp: str,
+        telegram_guest_appointment_id: str | None = None,
+        telegram_user_id: str | None = None,
+    ) -> dict:
         """Verify the OTP sent during patient registration.
 
         Args:
@@ -130,6 +140,13 @@ class UserController(BaseController):
                     },
                 },
             )
+            await self.claim_telegram_guest_appointments_for_patient(
+                patient_id=str(updated_user.id),
+                patient_name=updated_user.name,
+                patient_phone=updated_user.phone,
+                appointment_id=telegram_guest_appointment_id,
+                telegram_user_id=telegram_user_id,
+            )
             return self._serialize_user_document(updated_user)
         except HTTPException:
             raise
@@ -139,6 +156,94 @@ class UserController(BaseController):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal Server Error",
             )
+
+    async def claim_telegram_guest_appointments_for_patient(
+        self,
+        *,
+        patient_id: str,
+        patient_name: str,
+        patient_phone: str | None,
+        appointment_id: str | None = None,
+        telegram_user_id: str | None = None,
+    ) -> int:
+        """Attach matching Telegram guest appointments to a real patient account."""
+
+        appointments_to_claim = []
+        if appointment_id:
+            appointment = await self.crud_appointment.get_by_id(id=appointment_id)
+            if appointment is None:
+                logging.warning(f"Telegram guest appointment not found for claim: {appointment_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Telegram appointment not found",
+                )
+            if not appointment.patient_id.startswith("telegram-guest:"):
+                if appointment.patient_id == patient_id:
+                    return 0
+                logging.warning(f"Appointment {appointment_id} is not a Telegram guest appointment")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Appointment is already linked to another patient",
+                )
+            appointments_to_claim.append(appointment)
+
+        normalized_patient_name = self._normalize_person_name(patient_name)
+        for appointment in await self.crud_appointment.get_all():
+            if not appointment.patient_id.startswith("telegram-guest:"):
+                continue
+            if any(str(existing.id) == str(appointment.id) for existing in appointments_to_claim):
+                continue
+
+            same_telegram_user = (
+                telegram_user_id
+                and getattr(appointment, "telegram_user_id", None) == telegram_user_id
+            )
+            same_patient_name = (
+                normalized_patient_name
+                and self._normalize_person_name(appointment.patient_name or "") == normalized_patient_name
+            )
+            if same_telegram_user or same_patient_name:
+                appointments_to_claim.append(appointment)
+
+        claimed_count = 0
+        for appointment in appointments_to_claim:
+            await self.crud_appointment.update(
+                id=str(appointment.id),
+                obj_in={
+                    "patient_id": patient_id,
+                    "patient_phone": appointment.patient_phone or patient_phone,
+                },
+            )
+
+            prescription = await self.crud_prescription.get_by_appointment_id(
+                appointment_id=str(appointment.id)
+            )
+            if prescription:
+                await self.crud_prescription.update(
+                    id=str(prescription.id),
+                    obj_in={"patient_id": patient_id},
+                )
+            claimed_count += 1
+
+        return claimed_count
+
+    async def claim_telegram_guest_appointments_by_patient_id(self, *, patient_id: str) -> int:
+        """Attach matching Telegram guest appointments for an existing patient."""
+
+        patient = await self.crud_user.get_by_id(id=patient_id)
+        if patient is None or patient.role != UserRole.PATIENT:
+            return 0
+        return await self.claim_telegram_guest_appointments_for_patient(
+            patient_id=patient_id,
+            patient_name=patient.name,
+            patient_phone=patient.phone,
+        )
+
+    @staticmethod
+    def _normalize_person_name(value: str) -> str:
+        """Normalize a patient name for Telegram guest-account matching."""
+
+        return " ".join(value.strip().lower().split())
 
     async def set_doctor_credentials(self, doctor_data: dict) -> dict:
         """Create a doctor account after validating an invitation token.

@@ -16,6 +16,7 @@ from backend.commons.auth import (
 )
 from backend.commons.logger import logger
 from backend.core.controllers.base_controller import BaseController
+from backend.core.controllers.user_controller import UserController
 from backend.core.cruds.user_crud import CRUDUser
 from backend.core.models.user_model import DoctorStatus, OtpPurpose, UserRole
 from backend.core.utils.email.email_helper import send_email
@@ -126,6 +127,12 @@ class AuthController(BaseController):
                 otp=otp,
                 expected_purpose=OtpPurpose.LOGIN_VERIFY,
             )
+            if user.role == UserRole.PATIENT:
+                await UserController().claim_telegram_guest_appointments_for_patient(
+                    patient_id=str(user.id),
+                    patient_name=user.name,
+                    patient_phone=user.phone,
+                )
             return {
                 "access_token": signJWT(user_role=user.role.value, id=str(user.id)),
                 "token_type": "bearer",

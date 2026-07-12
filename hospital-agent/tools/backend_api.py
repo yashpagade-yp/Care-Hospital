@@ -27,11 +27,23 @@ class BackendApiClient:
             json={"name": name, "phone": phone, "email": email, "password": password},
         )
 
-    async def verify_patient_registration_otp(self, *, email: str, otp: str) -> dict[str, Any]:
+    async def verify_patient_registration_otp(
+        self,
+        *,
+        email: str,
+        otp: str,
+        telegram_guest_appointment_id: str | None = None,
+        telegram_user_id: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"email": email, "otp": otp}
+        if telegram_guest_appointment_id:
+            payload["telegram_guest_appointment_id"] = telegram_guest_appointment_id
+        if telegram_user_id:
+            payload["telegram_user_id"] = telegram_user_id
         return await self._request(
             "POST",
             "/v1/patients/verify-otp",
-            json={"email": email, "otp": otp},
+            json=payload,
         )
 
     async def list_doctors(self, access_token: str) -> dict[str, Any]:
